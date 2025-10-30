@@ -1,0 +1,10 @@
+aiohttp>=3.9
+networkx>=3.2
+pandas>=2.1
+rich>=13.7
+selectolax>=0.3
+robots-txt-parse>=0.1.1
+xmltodict>=0.13
+typer>=0.9
+yarl>=1.9
+pyyaml>=6.0

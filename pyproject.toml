@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sfrog"
+version = "0.1.0"
+description = "A Screaming Frog inspired CLI site crawler"
+authors = [{ name = "OpenAI", email = "opensource@openai.com" }]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.9",
+    "networkx>=3.2",
+    "pandas>=2.1",
+    "rich>=13.7",
+    "selectolax>=0.3",
+    "robots-txt-parse>=0.1.1",
+    "xmltodict>=0.13",
+    "typer>=0.9",
+    "yarl>=1.9",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+sfrog = "sfrog.cli:app"
