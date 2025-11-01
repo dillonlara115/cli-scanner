@@ -41,6 +41,3 @@ func displayLogo() {
 `
 	fmt.Print(logo)
 }
-`
-	fmt.Print(logo)
-}
