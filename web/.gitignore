@@ -1,0 +1,5 @@
+# Frontend Build Files
+web/node_modules
+web/dist
+web/.DS_Store
+web/*.log
