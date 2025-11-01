@@ -218,21 +218,11 @@ func PromptInteractive() (*Config, string, string, bool, error) {
 		maxPages = 999999 // Very large number for "unlimited"
 	}
 	
-	// Get max depth
-	maxDepthInput, err := PromptInt("Maximum crawl depth? (leave blank for unlimited)", 3, false)
-	if err != nil {
-		return nil, "", "", false, err
-	}
-	maxDepth := maxDepthInput
-	if maxDepth == 0 {
-		maxDepth = 9999 // Very large number for "unlimited"
-	}
+	// Default to unlimited depth (no prompt)
+	maxDepth := 9999 // Very large number for "unlimited"
 	
-	// Get workers
-	workers, err := PromptInt("Number of concurrent workers?", 10, false)
-	if err != nil {
-		return nil, "", "", false, err
-	}
+	// Default to 10 workers (no prompt)
+	workers := 10
 	
 	// Get export format
 	format, err := PromptChoice("Export format?", []string{"csv", "json"}, "csv")
@@ -273,21 +263,11 @@ func PromptInteractive() (*Config, string, string, bool, error) {
 		return nil, "", "", false, err
 	}
 	
-	exportGraph, err := PromptBool("Export link graph?", false)
-	if err != nil {
-		return nil, "", "", false, err
-	}
+	// Always export link graph (no prompt)
+	graphExport := filepath.Join(crawlDir, "graph.json")
 	
-	graphExport := ""
-	if exportGraph {
-		graphExport = filepath.Join(crawlDir, "graph.json")
-	}
-	
-	// Ask about opening browser
-	openBrowser, err := PromptBool("Open web dashboard in browser after crawl?", true)
-	if err != nil {
-		return nil, "", "", false, err
-	}
+	// Always open browser after crawl (no prompt)
+	openBrowser := true
 	
 	// Build config
 	config := &Config{

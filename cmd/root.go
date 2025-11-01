@@ -17,24 +17,26 @@ var rootCmd = &cobra.Command{
 	Short: "A fast, lightweight SEO website crawler",
 	Long: `baracuda is a CLI tool for crawling websites and extracting SEO data.
 It recursively crawls websites, extracts key SEO elements like titles, meta descriptions,
-headings, and links, and exports the data to CSV or JSON format.`,
+headings, and links, and exports the data to CSV or JSON format.
+
+When run without arguments, baracuda starts in interactive mode.`,
 	Version: "1.0.0",
+	Run: func(cmd *cobra.Command, args []string) {
+		// When baracuda is run without subcommands, start interactive crawl
+		displayBanner()
+		fmt.Println()
+		// Force interactive mode when called from root
+		interactive = true
+		// Run the crawl command with interactive mode
+		if err := runCrawl(cmd, args); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 func Execute() {
-	// Display banner for main commands (not for --help, --version, etc.)
-	if len(os.Args) > 1 {
-		firstArg := os.Args[1]
-		// Only show banner for actual commands, not flags
-		if firstArg != "--help" && firstArg != "-h" && firstArg != "--version" && firstArg != "-v" && firstArg != "help" {
-			displayBanner()
-		}
-	} else {
-		// No args, show banner
-		displayBanner()
-	}
-
 	err := rootCmd.Execute()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
