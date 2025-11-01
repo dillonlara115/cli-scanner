@@ -12,16 +12,16 @@ This document tracks planned improvements for the Barracuda web dashboard to bet
 
 ## Phase 1: High Impact, Quick Wins
 
-### [ ] Export Issues Functionality
+### [✅] Export Issues Functionality
 **Priority:** High  
 **Impact:** High  
 **Effort:** Low-Medium
 
-- [ ] Add "Export Issues" button to IssuesPanel
-- [ ] Export filtered issues to CSV
-- [ ] Export filtered issues to JSON
-- [ ] Include all issue fields: URL, type, severity, message, recommendation
-- [ ] Preserve current filters when exporting
+- [✅] Add "Export Issues" button to IssuesPanel
+- [✅] Export filtered issues to CSV
+- [✅] Export filtered issues to JSON
+- [✅] Include all issue fields: URL, type, severity, message, recommendation
+- [✅] Preserve current filters when exporting
 
 **Files to modify:**
 - `web/src/components/IssuesPanel.svelte`
@@ -33,16 +33,16 @@ This document tracks planned improvements for the Barracuda web dashboard to bet
 
 ---
 
-### [ ] Dashboard Navigation Links
+### [✅] Dashboard Navigation Links
 **Priority:** High  
 **Impact:** High  
 **Effort:** Low
 
-- [ ] Make "Total Issues" card clickable → navigate to Issues tab
-- [ ] Add "View All Issues" button in Issue Types card
-- [ ] Add quick action buttons in dashboard:
-  - [ ] "Fix Critical Issues" → filters to errors
-  - [ ] "View Slow Pages" → navigate to Results with performance filter
+- [✅] Make "Total Issues" card clickable → navigate to Issues tab
+- [✅] Add "View All Issues" button in Issue Types card
+- [✅] Add quick action buttons in dashboard:
+  - [✅] "Fix Critical Issues" → filters to errors
+  - [✅] "View Slow Pages" → navigate to Results with performance filter
 
 **Files to modify:**
 - `web/src/components/SummaryCard.svelte`

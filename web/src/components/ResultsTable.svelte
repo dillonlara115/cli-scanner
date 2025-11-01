@@ -2,11 +2,17 @@
   import { onMount } from 'svelte';
 
   export let results = [];
+  export let filter = { status: 'all', performance: false };
 
   let searchTerm = '';
-  let statusFilter = 'all';
+  let statusFilter = filter.status || 'all';
   let sortBy = 'url';
   let sortOrder = 'asc';
+  let showSlowOnly = filter.performance || false;
+
+  // Sync with prop changes
+  $: if (filter.status) statusFilter = filter.status;
+  $: if (filter.performance !== undefined) showSlowOnly = filter.performance;
 
   $: filteredResults = results.filter(r => {
     const matchesSearch = !searchTerm || 
@@ -19,7 +25,9 @@
       (statusFilter === 'error' && r.status_code >= 400) ||
       (statusFilter === 'failed' && r.error);
 
-    return matchesSearch && matchesStatus;
+    const matchesPerformance = !showSlowOnly || r.response_time_ms > 2000;
+
+    return matchesSearch && matchesStatus && matchesPerformance;
   }).sort((a, b) => {
     let aVal, bVal;
     
@@ -77,6 +85,10 @@
         <option value="error">Error (4xx/5xx)</option>
         <option value="failed">Failed</option>
       </select>
+      <label class="label cursor-pointer gap-2">
+        <span class="label-text">Slow only (>2s)</span>
+        <input type="checkbox" class="checkbox checkbox-primary" bind:checked={showSlowOnly} />
+      </label>
       <select class="select select-bordered" bind:value={sortBy}>
         <option value="url">Sort by URL</option>
         <option value="status">Sort by Status</option>

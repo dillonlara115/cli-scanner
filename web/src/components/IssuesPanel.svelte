@@ -1,8 +1,15 @@
 <script>
   export let issues = [];
+  export let filter = { severity: 'all', type: 'all' };
 
   let severityFilter = 'all';
   let typeFilter = 'all';
+
+  // Initialize filters from prop
+  $: {
+    if (filter.severity) severityFilter = filter.severity;
+    if (filter.type) typeFilter = filter.type;
+  }
 
   $: filteredIssues = issues.filter(i => {
     const matchesSeverity = severityFilter === 'all' || i.severity === severityFilter;

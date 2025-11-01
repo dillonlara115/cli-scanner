@@ -1,5 +1,6 @@
 <script>
   export let summary = null;
+  export let navigateToTab = () => {};
 
   if (!summary) {
     summary = {
@@ -18,6 +19,20 @@
     if (!summary.issues) return 0;
     return summary.issues.filter(i => i.severity === severity).length;
   };
+
+  const handleTotalIssuesClick = () => {
+    if (summary.total_issues > 0) {
+      navigateToTab('issues');
+    }
+  };
+
+  const handleFixCriticalIssues = () => {
+    navigateToTab('issues', { severity: 'error' });
+  };
+
+  const handleViewSlowPages = () => {
+    navigateToTab('results', { performance: true });
+  };
 </script>
 
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -31,7 +46,13 @@
     <div class="stat-value text-primary">{summary.total_pages}</div>
   </div>
 
-  <div class="stat bg-base-100 rounded-box shadow">
+  <div 
+    class="stat bg-base-100 rounded-box shadow cursor-pointer hover:shadow-lg transition-shadow"
+    role="button"
+    tabindex="0"
+    on:click={handleTotalIssuesClick}
+    on:keydown={(e) => e.key === 'Enter' && handleTotalIssuesClick()}
+  >
     <div class="stat-figure text-error">
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
@@ -39,6 +60,9 @@
     </div>
     <div class="stat-title">Total Issues</div>
     <div class="stat-value text-error">{summary.total_issues}</div>
+    {#if summary.total_issues > 0}
+      <div class="stat-desc text-xs mt-1">Click to view all issues</div>
+    {/if}
   </div>
 
   <div class="stat bg-base-100 rounded-box shadow">
@@ -79,6 +103,13 @@
           <span class="text-info">Info:</span>
           <span class="font-bold">{getSeverityCount('info')}</span>
         </div>
+        {#if getSeverityCount('error') > 0}
+          <div class="card-actions justify-end mt-4">
+            <button class="btn btn-error btn-sm" on:click={handleFixCriticalIssues}>
+              Fix Critical Issues
+            </button>
+          </div>
+        {/if}
       </div>
     </div>
   </div>
@@ -114,6 +145,13 @@
           </div>
         {/each}
       </div>
+      {#if summary.total_issues > 0}
+        <div class="card-actions justify-end mt-4">
+          <button class="btn btn-primary btn-sm" on:click={() => navigateToTab('issues')}>
+            View All Issues
+          </button>
+        </div>
+      {/if}
     </div>
   </div>
 </div>
@@ -121,7 +159,12 @@
 {#if summary.slowest_pages && summary.slowest_pages.length > 0}
   <div class="card bg-base-100 shadow">
     <div class="card-body">
-      <h2 class="card-title">Slowest Pages</h2>
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="card-title">Slowest Pages</h2>
+        <button class="btn btn-outline btn-sm" on:click={handleViewSlowPages}>
+          View All Slow Pages
+        </button>
+      </div>
       <div class="overflow-x-auto">
         <table class="table table-zebra">
           <thead>
