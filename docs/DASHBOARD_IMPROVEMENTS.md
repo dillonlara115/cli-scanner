@@ -54,16 +54,16 @@ This document tracks planned improvements for the Barracuda web dashboard to bet
 
 ---
 
-### [ ] Enhanced Issue Filtering & Search
+### [✅] Enhanced Issue Filtering & Search
 **Priority:** High  
 **Impact:** High  
 **Effort:** Low-Medium
 
-- [ ] Add search box to filter issues by URL or message text
-- [ ] Add "Group by URL" toggle
-- [ ] Add "Group by Type" toggle
-- [ ] Add "Affected Pages" count for each issue type
-- [ ] Filter by affected pages count
+- [✅] Add search box to filter issues by URL or message text
+- [✅] Add "Group by URL" toggle
+- [✅] Add "Group by Type" toggle
+- [✅] Add "Affected Pages" count for each issue type
+- [✅] Filter by affected pages count
 
 **Files to modify:**
 - `web/src/components/IssuesPanel.svelte`
