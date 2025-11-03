@@ -146,25 +146,29 @@ This document tracks planned improvements for the Barracuda web dashboard to bet
 
 ---
 
-### [ ] Actionable Recommendations Panel
+### [✅] Actionable Recommendations Panel
 **Priority:** Medium  
 **Impact:** Medium  
 **Effort:** Medium
 
-- [ ] Create dedicated Recommendations component
-- [ ] Show quick fixes with copy-paste solutions
-- [ ] Code snippets for common fixes (HTML/JS examples)
-- [ ] Estimated impact indicator (potential SEO improvement)
-- [ ] Link to documentation/articles
+- [✅] Create dedicated Recommendations component
+- [✅] Show quick fixes with copy-paste solutions
+- [✅] Code snippets for common fixes (HTML/JS examples)
+- [✅] Estimated impact indicator (potential SEO improvement)
+- [✅] Link to documentation/articles
 
 **Files to modify:**
 - New component: `web/src/components/RecommendationsPanel.svelte`
 - Update `web/src/components/Dashboard.svelte` to include it
 
 **Notes:**
-- Could be a new tab or sidebar
-- Recommendations should be contextual based on issue type
-- Include external links to SEO best practices
+- ✅ Added as new tab in Dashboard navigation
+- ✅ Recommendations are contextual based on issue type
+- ✅ Includes external links to SEO best practices (Moz, Google, Web.dev)
+- ✅ Code snippets are copy-pasteable with copy button
+- ✅ Impact indicators (Critical, High, Medium, Low) with color coding
+- ✅ Shows affected pages count for each recommendation
+- ✅ "View Issues" button navigates to Issues tab filtered by issue type
 
 ---
 
@@ -428,6 +432,372 @@ web/src/components/
 
 ---
 
+---
+
+## AI Integration Opportunities
+
+### [ ] AI-Powered Content Generation
+**Priority:** Medium  
+**Impact:** High  
+**Effort:** Medium-High
+
+- [ ] Generate meta descriptions for pages missing them
+- [ ] Generate optimized title tags
+- [ ] Generate H1 heading suggestions
+- [ ] Generate image alt text automatically
+- [ ] Improve existing content (expand short descriptions, optimize titles)
+
+**Files to modify:**
+- New backend service: `internal/ai/generator.go`
+- New API endpoints: `/api/ai/generate-meta-desc`, `/api/ai/generate-title`, etc.
+- Frontend components: `web/src/components/AIGenerator.svelte`
+- Enhance `RecommendationsPanel.svelte` with AI generation buttons
+
+**Implementation Notes:**
+- Use OpenAI API, Anthropic Claude, or local models (Ollama)
+- Provide context: page URL, title, headings, surrounding content
+- Generate multiple options for user to choose from
+- Include copy-paste functionality
+- Cache similar requests to reduce API costs
+- Rate limiting and cost controls
+
+**Example Use Cases:**
+- "Generate Meta Description" button in `PageDetailModal` for pages missing descriptions
+- Bulk generation for multiple pages
+- Context-aware suggestions based on page content
+
+---
+
+### [ ] AI Strategic Analysis & Recommendations
+**Priority:** Medium  
+**Impact:** High  
+**Effort:** Medium-High
+
+- [ ] Analyze overall site health and recommend rebuild vs incremental fixes
+- [ ] Generate strategic action plans
+- [ ] Estimate ROI/cost-benefit for fixes
+- [ ] Provide timeline estimates for fixes
+- [ ] Identify critical vs nice-to-have issues
+
+**Files to modify:**
+- New backend service: `internal/ai/strategic.go`
+- New API endpoint: `/api/ai/strategic-assessment`
+- New component: `web/src/components/StrategicAnalysis.svelte`
+
+**Analysis Criteria:**
+- Issue density (% of pages with issues)
+- Issue severity distribution
+- Technical debt score
+- Performance patterns
+- Site architecture health
+
+**Output:**
+- Strategic recommendation: "Rebuild" vs "Fix Incrementally"
+- Reasoning with cost/benefit analysis
+- Prioritized action plan
+- Risk assessment
+
+---
+
+### [ ] AI-Enhanced Prioritization
+**Priority:** Medium  
+**Impact:** High  
+**Effort:** Medium
+
+- [ ] Enhance priority scores with AI analysis
+- [ ] Consider SEO impact (ranking potential)
+- [ ] Consider user experience impact
+- [ ] Consider conversion impact
+- [ ] Consider technical complexity vs impact ratio
+- [ ] Generate fix order recommendations
+
+**Files to modify:**
+- New backend service: `internal/ai/prioritizer.go`
+- New API endpoint: `/api/ai/prioritize-issues`
+- Enhance `IssuesPanel.svelte` with AI priority badges
+- Add reasoning tooltips for AI priorities
+
+**Enhanced Priority Calculation:**
+```
+AI Priority = Base Priority × SEO Impact × UX Impact × Complexity Factor
+```
+
+**Features:**
+- Display AI priority score alongside existing priority
+- Show reasoning for prioritization
+- Suggest optimal fix order
+- Identify quick wins vs long-term projects
+
+---
+
+### [ ] Google Search Console Integration
+**Priority:** High  
+**Impact:** High  
+**Effort:** High
+
+- [ ] Connect to Google Search Console API
+- [ ] Pull performance data (impressions, clicks, CTR, position)
+- [ ] Pull query data per page
+- [ ] Pull indexing status
+- [ ] Enrich issues with GSC performance data
+- [ ] Prioritize fixes based on actual traffic
+- [ ] Identify CTR optimization opportunities
+
+**Files to modify:**
+- New backend service: `internal/gsc/client.go`
+- New backend service: `internal/gsc/enricher.go`
+- New backend service: `internal/gsc/auth.go`
+- New API endpoints: `/api/gsc/connect`, `/api/gsc/performance`, `/api/gsc/enrich-issues`
+- New component: `web/src/components/GSCConnection.svelte`
+- New component: `web/src/components/PerformanceData.svelte`
+- Enhance `RecommendationsPanel.svelte` with GSC data
+- Enhance `IssuesPanel.svelte` with traffic-based prioritization
+
+**Data Models:**
+```go
+type GSCPerformance struct {
+    URL          string
+    Impressions  int64
+    Clicks       int64
+    CTR          float64
+    Position     float64
+    TopQueries   []Query
+}
+
+type EnrichedIssue struct {
+    Issue
+    GSCPerformance *GSCPerformance
+    EnrichedPriority float64
+    RecommendationReason string
+}
+```
+
+**Features:**
+- OAuth2 authentication flow
+- Cache GSC data (refresh daily)
+- Match URLs between crawl and GSC
+- Traffic-based priority multipliers
+- CTR optimization recommendations
+- High-impression page identification
+
+**Example Enhanced Recommendations:**
+- "This page has 15K impressions/month but missing meta description. Adding one could improve CTR by 10-20%."
+- "This page has high visibility (25K impressions) but low CTR (2.1%). Optimize title for better click-through."
+
+**Dependencies:**
+- `golang.org/x/oauth2`
+- `google.golang.org/api/searchconsole/v1`
+
+---
+
+### [ ] AI Content Optimization Suggestions
+**Priority:** Low  
+**Impact:** Medium  
+**Effort:** Medium
+
+- [ ] Analyze page content for SEO opportunities
+- [ ] Suggest keyword optimization
+- [ ] Recommend semantic improvements
+- [ ] Identify content gaps
+- [ ] Suggest internal linking opportunities
+
+**Files to modify:**
+- New backend service: `internal/ai/content.go`
+- New API endpoint: `/api/ai/optimize-content`
+- Enhance `PageDetailModal.svelte` with optimization suggestions
+
+**Use Cases:**
+- Content analysis for pages with thin content
+- Keyword density analysis
+- Semantic HTML suggestions
+- Content structure recommendations
+
+---
+
+### [ ] AI Issue Explanations & Fix Guides
+**Priority:** Low  
+**Impact:** Low-Medium  
+**Effort:** Low-Medium
+
+- [ ] Generate plain-language explanations for complex issues
+- [ ] Create step-by-step fix instructions
+- [ ] Generate implementation guides
+- [ ] Context-aware troubleshooting
+
+**Files to modify:**
+- Enhance `RecommendationsPanel.svelte` with AI-generated explanations
+- Enhance `PageDetailModal.svelte` with contextual help
+
+**Features:**
+- Explain technical SEO concepts in simple terms
+- Provide implementation guides based on tech stack
+- Generate troubleshooting steps
+- Context-aware based on issue type and page structure
+
+---
+
+## AI Integration Architecture
+
+### Backend Architecture
+```
+internal/
+├── ai/
+│   ├── generator.go      # Content generation (meta desc, titles, alt text)
+│   ├── prioritizer.go    # Enhanced priority scoring
+│   ├── strategic.go       # Strategic analysis
+│   └── content.go         # Content optimization
+├── gsc/
+│   ├── client.go          # Google Search Console API client
+│   ├── enricher.go       # Merge GSC data with crawl data
+│   └── auth.go           # OAuth2 authentication
+```
+
+### API Endpoints
+```
+/api/ai/
+├── generate-meta-desc    # POST - Generate meta description
+├── generate-title        # POST - Generate title tag
+├── generate-alt-text     # POST - Generate image alt text
+├── strategic-assessment  # POST - Get strategic recommendations
+├── prioritize-issues     # POST - Enhanced prioritization
+└── optimize-content      # POST - Content optimization suggestions
+
+/api/gsc/
+├── connect               # GET - OAuth connection flow
+├── callback              # GET - OAuth callback handler
+├── properties            # GET - List GSC properties
+├── performance           # GET - Fetch performance data
+└── enrich-issues         # POST - Merge GSC data with issues
+```
+
+### Frontend Components
+```
+web/src/components/
+├── AIGenerator.svelte           # AI generation UI
+├── StrategicAnalysis.svelte     # Strategic recommendations
+├── GSCConnection.svelte         # GSC authentication UI
+├── PerformanceData.svelte       # GSC performance display
+└── EnhancedRecommendations.svelte  # AI + GSC enriched recommendations
+```
+
+---
+
+## Implementation Priority
+
+### Phase 1: Quick Wins
+1. **Meta Description Generation** - High impact, straightforward implementation
+2. **Title Tag Generation** - Similar to meta descriptions
+3. **Image Alt Text Generation** - Good user experience improvement
+
+### Phase 2: Strategic Value
+4. **Google Search Console Integration** - High value for prioritization
+5. **AI-Enhanced Prioritization** - Combines with GSC data
+6. **Strategic Analysis** - Helps with decision-making
+
+### Phase 3: Advanced Features
+7. **Content Optimization** - More complex analysis
+8. **Issue Explanations** - Nice-to-have enhancement
+
+---
+
+## Technical Considerations
+
+### Authentication & Security
+- Store API keys securely (environment variables, config file)
+- OAuth2 flow for Google Search Console
+- Encrypt stored tokens
+- Rate limiting for AI API calls
+- Cost controls and usage tracking
+
+### Performance & Caching
+- Cache AI responses for similar pages
+- Cache GSC data (refresh daily)
+- Batch requests where possible
+- Background processing for bulk operations
+
+### Error Handling
+- Graceful degradation if AI service unavailable
+- Fallback to static recommendations
+- Clear error messages for users
+- Retry logic for transient failures
+
+### Cost Management
+- Track API usage per user/session
+- Set usage limits
+- Provide cost estimates before bulk operations
+- Use cheaper models for simple tasks
+
+### Dependencies
+```go
+// AI Providers
+require (
+    github.com/sashabaranov/go-openai  // OpenAI API
+    // OR
+    github.com/anthropics/anthropic-sdk-go  // Anthropic Claude
+    // OR
+    // Local models via Ollama
+)
+
+// Google Search Console
+require (
+    golang.org/x/oauth2 v0.15.0
+    google.golang.org/api/searchconsole/v1
+)
+```
+
+---
+
+## Example User Flows
+
+### Flow 1: Generate Meta Description
+1. User views page with missing meta description
+2. Clicks "Generate Meta Description" button
+3. AI analyzes page content (title, headings, URL)
+4. Generates 3 options
+5. User selects best option
+6. Copies to clipboard or exports
+
+### Flow 2: Strategic Analysis
+1. User completes crawl
+2. Navigates to Strategic Analysis tab
+3. AI analyzes all issues and site health
+4. Displays recommendation: "Fix Incrementally" or "Consider Rebuild"
+5. Shows reasoning and action plan
+6. User can drill down into details
+
+### Flow 3: GSC-Enhanced Prioritization
+1. User connects Google Search Console
+2. System fetches performance data
+3. Issues are enriched with traffic data
+4. Priority scores recalculated based on impressions/clicks
+5. High-traffic pages with issues rise to top
+6. Recommendations include traffic context
+
+---
+
+## Future Enhancements
+
+- **Competitive Analysis**: Compare against competitor sites
+- **Content Gap Analysis**: Identify missing content opportunities
+- **Automated Fix Suggestions**: Generate code fixes automatically
+- **Multi-language Support**: Generate content in multiple languages
+- **Tone Analysis**: Match brand voice in generated content
+- **A/B Testing Suggestions**: Generate multiple title/description variants
+
+---
+
+## Future Opportunities
+
+- Leverage Screaming Frog's Custom Extraction to pull schema, custom meta data, or other tailored fields for richer page detail and recommendations.
+- Use Crawl Comparison and Change Detection to surface deltas between crawls for trend charts and fix regressions.
+- Schedule crawls via Screaming Frog CLI to keep historical data fresh for progress tracking views.
+- Integrate GA, Search Console, or PageSpeed APIs through Screaming Frog to enrich issue prioritization with traffic and performance context.
+- Incorporate Internal Link Score metrics to highlight authority distribution and support link equity filters.
+- Reuse Screaming Frog's custom reports (e.g., inlinks, redirect chains) as inputs for full-report exports or dashboard summaries.
+- Adopt List Mode workflows to monitor stakeholder URL sets alongside status tracking features.
+- Combine crawl data with log file analysis highlights to validate bot access and confirm that fixes are indexed.
+
+---
+
 **Last Updated:** {{ date }}
 **Status:** Planning Phase
-

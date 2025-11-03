@@ -64,20 +64,37 @@ func (f *Fetcher) Fetch(url string) *FetchResult {
 	req.Header.Set("User-Agent", f.userAgent)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 
-	// Track redirect chain
+	// Track redirect chain using CheckRedirect callback
+	// CheckRedirect is called when the HTTP client encounters a redirect response
 	var redirectChain []string
-	originalTransport := f.client.Transport
-	f.client.Transport = &redirectTrackingTransport{
-		Transport:      originalTransport,
-		redirectChain:  &redirectChain,
-		originalURL:    url,
+	originalCheckRedirect := f.client.CheckRedirect
+	
+	// Temporarily override CheckRedirect to capture redirect URLs
+	f.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		// When CheckRedirect is called:
+		// - 'via' contains all previous requests (via[0] = original request)
+		// - 'req' is the NEW request about to be made to follow the redirect
+		// - The redirect response came from the last request in 'via'
+		// 
+		// We want to capture the redirect destinations (the URLs we're redirecting TO)
+		// Each time CheckRedirect is called, we're following a redirect, so we capture req.URL
+		if len(via) > 0 {
+			// This is a redirect - capture the destination URL
+			redirectChain = append(redirectChain, req.URL.String())
+		}
+		
+		// Follow redirects up to 10 times
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
+		return nil
 	}
 
 	resp, err := f.client.Do(req)
 	responseTime := time.Since(startTime)
 
-	// Restore original transport
-	f.client.Transport = originalTransport
+	// Restore original CheckRedirect
+	f.client.CheckRedirect = originalCheckRedirect
 
 	if err != nil {
 		result.Error = fmt.Errorf("request failed: %w", err)
@@ -90,7 +107,9 @@ func (f *Fetcher) Fetch(url string) *FetchResult {
 	result.PageResult.StatusCode = resp.StatusCode
 	result.PageResult.ResponseTime = responseTime.Milliseconds()
 
-	// Add redirect chain if any
+	// Only add redirect chain if we actually had redirects (status code indicates redirects were followed)
+	// If the final status is 3xx, it means we hit a redirect that wasn't followed, or
+	// if we have redirectChain entries, we followed redirects
 	if len(redirectChain) > 0 {
 		result.PageResult.RedirectChain = redirectChain
 	}
@@ -173,22 +192,4 @@ func (f *Fetcher) FetchWithRetry(url string, maxRetries int) *FetchResult {
 	}
 
 	return lastResult
-}
-
-// redirectTrackingTransport wraps http.Transport to track redirects
-type redirectTrackingTransport struct {
-	Transport     http.RoundTripper
-	redirectChain *[]string
-	originalURL   string
-}
-
-func (t *redirectTrackingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.String() != t.originalURL {
-		*t.redirectChain = append(*t.redirectChain, req.URL.String())
-	}
-
-	if t.Transport == nil {
-		return http.DefaultTransport.RoundTrip(req)
-	}
-	return t.Transport.RoundTrip(req)
 }
