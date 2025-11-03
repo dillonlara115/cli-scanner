@@ -1,18 +1,54 @@
 <script>
-  import { onMount } from 'svelte';
+  import PageDetailModal from './PageDetailModal.svelte';
 
   export let results = [];
+  export let issues = [];
   export let filter = { status: 'all', performance: false };
+  export let navigateToTab = null; // Function to navigate to tabs
 
   let searchTerm = '';
   let statusFilter = filter.status || 'all';
   let sortBy = 'url';
   let sortOrder = 'asc';
   let showSlowOnly = filter.performance || false;
+  let showIssuesOnly = false;
+  let selectedPage = null;
+  let showModal = false;
 
   // Sync with prop changes
   $: if (filter.status) statusFilter = filter.status;
   $: if (filter.performance !== undefined) showSlowOnly = filter.performance;
+
+  // Calculate issue counts per URL
+  $: issuesByUrl = issues.reduce((acc, issue) => {
+    if (!acc[issue.url]) {
+      acc[issue.url] = [];
+    }
+    acc[issue.url].push(issue);
+    return acc;
+  }, {});
+
+  $: issueCountsByUrl = Object.entries(issuesByUrl).reduce((acc, [url, urlIssues]) => {
+    acc[url] = urlIssues.length;
+    return acc;
+  }, {});
+
+  const openPageDetail = (page) => {
+    selectedPage = page;
+    showModal = true;
+  };
+
+  const closeModal = () => {
+    showModal = false;
+    selectedPage = null;
+  };
+
+  const viewIssuesForPage = (url) => {
+    if (navigateToTab) {
+      navigateToTab('issues', { url: url });
+    }
+    closeModal();
+  };
 
   $: filteredResults = results.filter(r => {
     const matchesSearch = !searchTerm || 
@@ -27,7 +63,10 @@
 
     const matchesPerformance = !showSlowOnly || r.response_time_ms > 2000;
 
-    return matchesSearch && matchesStatus && matchesPerformance;
+    const hasIssues = (issueCountsByUrl[r.url] || 0) > 0;
+    const matchesIssuesFilter = !showIssuesOnly || hasIssues;
+
+    return matchesSearch && matchesStatus && matchesPerformance && matchesIssuesFilter;
   }).sort((a, b) => {
     let aVal, bVal;
     
@@ -89,6 +128,10 @@
         <span class="label-text">Slow only (>2s)</span>
         <input type="checkbox" class="checkbox checkbox-primary" bind:checked={showSlowOnly} />
       </label>
+      <label class="label cursor-pointer gap-2">
+        <span class="label-text">With issues only</span>
+        <input type="checkbox" class="checkbox checkbox-primary" bind:checked={showIssuesOnly} />
+      </label>
       <select class="select select-bordered" bind:value={sortBy}>
         <option value="url">Sort by URL</option>
         <option value="status">Sort by Status</option>
@@ -115,14 +158,17 @@
             <th>Status</th>
             <th>Response Time</th>
             <th>Title</th>
+            <th>Issues</th>
             <th>Links</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {#each filteredResults as result}
-            <tr>
+            {@const issueCount = issueCountsByUrl[result.url] || 0}
+            <tr class="cursor-pointer hover:bg-base-200" on:click={() => openPageDetail(result)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && openPageDetail(result)}>
               <td>
-                <a href={result.url} target="_blank" class="link link-primary">
+                <a href={result.url} target="_blank" class="link link-primary" onclick={(e) => e.stopPropagation()}>
                   {result.url}
                 </a>
               </td>
@@ -134,6 +180,15 @@
               <td>{result.response_time_ms}ms</td>
               <td class="max-w-xs truncate">{result.title || '-'}</td>
               <td>
+                {#if issueCount > 0}
+                  <span class="badge badge-error">
+                    {issueCount} issue{issueCount !== 1 ? 's' : ''}
+                  </span>
+                {:else}
+                  <span class="badge badge-success">No issues</span>
+                {/if}
+              </td>
+              <td onclick={(e) => e.stopPropagation()}>
                 <span class="badge badge-ghost">
                   {result.internal_links?.length || 0} internal
                 </span>
@@ -141,11 +196,28 @@
                   {result.external_links?.length || 0} external
                 </span>
               </td>
+              <td onclick={(e) => e.stopPropagation()}>
+                <button 
+                  class="btn btn-sm btn-primary"
+                  on:click={(e) => { e.stopPropagation(); viewIssuesForPage(result.url); }}
+                >
+                  View Issues
+                </button>
+              </td>
             </tr>
           {/each}
         </tbody>
       </table>
     </div>
   </div>
+
+  {#if showModal && selectedPage}
+    <PageDetailModal 
+      page={selectedPage} 
+      issues={issuesByUrl[selectedPage.url] || []}
+      on:close={closeModal}
+      {navigateToTab}
+    />
+  {/if}
 </div>
 

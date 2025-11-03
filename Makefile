@@ -1,7 +1,7 @@
 .PHONY: build test install clean release frontend-build frontend-dev serve
 
-# Build the binary
-build:
+# Build the binary (requires frontend to be built first)
+build: frontend-build
 	go build -o bin/barracuda .
 
 # Run tests
@@ -13,8 +13,8 @@ test-coverage:
 	go test ./... -coverprofile=coverage.out
 	go tool cover -html=coverage.out
 
-# Install to $GOPATH/bin
-install:
+# Install to $GOPATH/bin (requires frontend to be built first)
+install: frontend-build
 	go install .
 
 # Install alias to ~/.zshrc
@@ -44,8 +44,8 @@ clean:
 	rm -rf bin/
 	rm -f coverage.out
 
-# Build for multiple platforms
-release:
+# Build for multiple platforms (requires frontend to be built first)
+release: frontend-build
 	GOOS=linux GOARCH=amd64 go build -o bin/barracuda-linux-amd64 .
 	GOOS=linux GOARCH=arm64 go build -o bin/barracuda-linux-arm64 .
 	GOOS=darwin GOARCH=amd64 go build -o bin/barracuda-darwin-amd64 .

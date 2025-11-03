@@ -19,9 +19,22 @@ A fast, lightweight SEO website crawler CLI tool inspired by Screaming Frog.
 
 ### From Source
 
+**Important:** The frontend must be built before compiling the Go binary, as it is embedded into the executable.
+
 ```bash
 git clone https://github.com/dillonlara115/barracuda.git
 cd barracuda
+make frontend-build  # Build frontend first
+make build           # Build binary (includes embedded frontend)
+sudo mv bin/barracuda /usr/local/bin/
+```
+
+Or manually:
+
+```bash
+git clone https://github.com/dillonlara115/barracuda.git
+cd barracuda
+cd web && npm install && npm run build && cd ..
 go build -o barracuda .
 sudo mv barracuda /usr/local/bin/
 ```
@@ -32,9 +45,9 @@ sudo mv barracuda /usr/local/bin/
 go install github.com/dillonlara115/barracuda@latest
 ```
 
-### Frontend Setup (Optional)
+### Frontend Setup (Required for Building)
 
-To use the web dashboard, you'll need to build the frontend:
+The frontend is embedded into the binary, so it must be built before compiling:
 
 ```bash
 cd web
@@ -47,6 +60,8 @@ Or use the Makefile:
 ```bash
 make frontend-build
 ```
+
+**Note:** When installed via `go install` or built from source, the frontend is automatically included in the binary and works from any directory.
 
 ## Usage
 
@@ -263,20 +278,26 @@ Issues are displayed in the terminal summary and can be viewed in detail in the 
 - No database storage (all data in-memory)
 - No keyword/rank tracking (planned for future versions)
 - No JavaScript rendering (static HTML only)
-- Binary size: ~15-20 MB
+- Binary size: ~15-20 MB (includes embedded frontend)
 
 ## Development
 
 ### Building from Source
 
+**Important:** The frontend must be built before compiling the Go binary.
+
 ```bash
-# Build CLI
+# Build frontend, then build CLI (recommended)
 make build
+
+# Or build separately:
+make frontend-build
+go build -o bin/barracuda .
 
 # Run tests
 make test
 
-# Install locally
+# Install locally (builds frontend automatically)
 make install
 
 # Build frontend

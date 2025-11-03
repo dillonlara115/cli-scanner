@@ -1,19 +1,39 @@
 <script>
   export let issues = [];
-  export let filter = { severity: 'all', type: 'all' };
+  export let filter = { severity: 'all', type: 'all', url: null };
 
-  let severityFilter = 'all';
-  let typeFilter = 'all';
-  let searchTerm = '';
+  const normalizeSeverity = (value) => value ?? 'all';
+  const normalizeType = (value) => value ?? 'all';
+  const normalizeUrl = (value) => value ?? '';
+
+  const computeFilterSignature = (incoming = {}) => [
+    normalizeSeverity(incoming.severity),
+    normalizeType(incoming.type),
+    normalizeUrl(incoming.url)
+  ].join('|');
+
+  const applyFiltersFromProps = (incoming = {}) => {
+    severityFilter = normalizeSeverity(incoming.severity);
+    typeFilter = normalizeType(incoming.type);
+    searchTerm = normalizeUrl(incoming.url);
+  };
+
+  // Initialize filters - user can change these locally
+  let severityFilter = normalizeSeverity(filter?.severity);
+  let typeFilter = normalizeType(filter?.type);
+  let searchTerm = normalizeUrl(filter?.url);
   let groupBy = 'none'; // 'none', 'url', 'type', 'severity'
-  let minAffectedPages = 0;
+  let sortBy = 'none'; // 'none', 'priority'
 
-  // Initialize filters from prop (only once when component mounts or filter prop changes)
-  $: if (filter.severity && filter.severity !== severityFilter) {
-    severityFilter = filter.severity;
-  }
-  $: if (filter.type && filter.type !== typeFilter) {
-    typeFilter = filter.type;
+  let lastAppliedFilterSignature = computeFilterSignature(filter);
+
+  // Sync local filters when parent provides a new filter object (e.g., via navigation)
+  $: {
+    const nextSignature = computeFilterSignature(filter);
+    if (nextSignature !== lastAppliedFilterSignature) {
+      applyFiltersFromProps(filter);
+      lastAppliedFilterSignature = nextSignature;
+    }
   }
 
   // Calculate affected pages count for each issue type
@@ -31,31 +51,67 @@
     return acc;
   }, {});
 
-  // Filter issues based on search, severity, type, and affected pages count
-  $: filteredIssues = issues.filter(i => {
-    const matchesSeverity = severityFilter === 'all' || i.severity === severityFilter;
-    const matchesType = typeFilter === 'all' || i.type === typeFilter;
-    
-    // Search filter
-    const matchesSearch = !searchTerm || 
-      i.url.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      i.message?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      i.recommendation?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    // Affected pages count filter
-    const affectedPages = affectedPagesCounts[i.type] || 0;
-    const matchesAffectedPages = affectedPages >= minAffectedPages;
-    
-    return matchesSeverity && matchesType && matchesSearch && matchesAffectedPages;
-  });
+  // Calculate priority score for each issue: severity_weight * pages_affected
+  const getSeverityWeight = (severity) => {
+    switch (severity) {
+      case 'error': return 10;
+      case 'warning': return 5;
+      case 'info': return 1;
+      default: return 1;
+    }
+  };
+
+  const calculatePriorityScore = (issue) => {
+    const severityWeight = getSeverityWeight(issue.severity);
+    const pagesAffected = affectedPagesCounts[issue.type] || 0;
+    return severityWeight * pagesAffected;
+  };
+
+  // Calculate priority scores for all issues (for top 10 highlighting)
+  $: issuesWithPriority = issues.map(issue => ({
+    ...issue,
+    priorityScore: calculatePriorityScore(issue)
+  }));
+
+  // Get top 10 priority issues (for highlighting) - create a Set of issue identifiers
+  $: top10PriorityIssues = new Set(
+    issuesWithPriority
+      .sort((a, b) => b.priorityScore - a.priorityScore)
+      .slice(0, 10)
+      .map(issue => `${issue.url}|${issue.type}`) // Use URL + type as unique identifier
+  );
+
+  // Filter issues based on search, severity, type, affected pages count, and URL
+  // Direct reactive statement - Svelte tracks all referenced variables automatically
+  $: filteredIssues = issues.filter(i => 
+    (severityFilter === 'all' || i.severity === severityFilter) &&
+    (typeFilter === 'all' || i.type === typeFilter) &&
+    (!filter.url || i.url === filter.url) &&
+      (!searchTerm || 
+        i.url.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        i.message?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        i.recommendation?.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  // Sort filtered issues by priority if selected
+  $: sortedFilteredIssues = (() => {
+    if (sortBy === 'priority') {
+      return [...filteredIssues].sort((a, b) => {
+        const scoreA = calculatePriorityScore(a);
+        const scoreB = calculatePriorityScore(b);
+        return scoreB - scoreA; // Descending order (highest priority first)
+      });
+    }
+    return filteredIssues;
+  })();
 
   // Group filtered issues
   $: groupedIssues = (() => {
     if (groupBy === 'none') {
-      return { 'All Issues': filteredIssues };
+      return { 'All Issues': sortedFilteredIssues };
     } else if (groupBy === 'url') {
       const grouped = {};
-      filteredIssues.forEach(issue => {
+      sortedFilteredIssues.forEach(issue => {
         if (!grouped[issue.url]) {
           grouped[issue.url] = [];
         }
@@ -64,7 +120,7 @@
       return grouped;
     } else if (groupBy === 'type') {
       const grouped = {};
-      filteredIssues.forEach(issue => {
+      sortedFilteredIssues.forEach(issue => {
         if (!grouped[issue.type]) {
           grouped[issue.type] = [];
         }
@@ -73,7 +129,7 @@
       return grouped;
     } else if (groupBy === 'severity') {
       const grouped = {};
-      filteredIssues.forEach(issue => {
+      sortedFilteredIssues.forEach(issue => {
         if (!grouped[issue.severity]) {
           grouped[issue.severity] = [];
         }
@@ -124,7 +180,12 @@
 
   const exportAsJson = () => {
     const fileName = `issues-${timestamp()}.json`;
-    const content = JSON.stringify(filteredIssues, null, 2);
+    // Include priority scores in export
+    const issuesWithPriority = filteredIssues.map(issue => ({
+      ...issue,
+      priorityScore: calculatePriorityScore(issue)
+    }));
+    const content = JSON.stringify(issuesWithPriority, null, 2);
     downloadFile(content, fileName, 'application/json');
   };
 
@@ -135,11 +196,12 @@
       return /[",\n]/.test(stringValue) ? `"${stringValue.replace(/"/g, '""')}"` : stringValue;
     };
 
-    const headers = ['url', 'type', 'severity', 'message', 'recommendation', 'value'];
+    const headers = ['url', 'type', 'severity', 'priority_score', 'message', 'recommendation', 'value'];
     const dataRows = rows.map(issue => [
       issue.url || '',
       issue.type || '',
       issue.severity || '',
+      calculatePriorityScore(issue).toString(),
       issue.message || '',
       issue.recommendation || '',
       issue.value || ''
@@ -194,35 +256,31 @@
             <option value="type">Group by Type</option>
             <option value="severity">Group by Severity</option>
           </select>
-          <select class="select select-bordered" bind:value={severityFilter}>
+          <select 
+            class="select select-bordered" 
+            bind:value={severityFilter}
+          >
             <option value="all">All Severities</option>
             <option value="error">Errors</option>
             <option value="warning">Warnings</option>
             <option value="info">Info</option>
           </select>
-          <select class="select select-bordered" bind:value={typeFilter}>
+          <select 
+            class="select select-bordered" 
+            bind:value={typeFilter}
+          >
             <option value="all">All Types</option>
             {#each uniqueTypes as type}
               <option value={type}>{type.replace(/_/g, ' ')}</option>
             {/each}
           </select>
+          <select class="select select-bordered" bind:value={sortBy}>
+            <option value="none">Sort by...</option>
+            <option value="priority">Sort by Priority</option>
+          </select>
         </div>
       </div>
       
-      <!-- Affected pages filter -->
-      <div class="flex items-center gap-2">
-        <label class="label-text">Min Affected Pages:</label>
-        <input 
-          type="number" 
-          class="input input-bordered input-sm w-24" 
-          bind:value={minAffectedPages} 
-          min="0"
-        />
-        <span class="text-sm text-base-content/70">
-          (Filter issue types by how many pages are affected)
-        </span>
-      </div>
-
       <!-- Export button -->
       <div class="flex justify-end">
         <details class="dropdown dropdown-end">
@@ -245,8 +303,14 @@
 
     <div class="text-sm text-base-content/70 mb-4">
       Showing {filteredIssues.length} of {issues.length} issues
+      {#if filter.url}
+        <span class="badge badge-info ml-2">Filtered by URL: {filter.url}</span>
+      {/if}
       {#if groupBy !== 'none'}
         | Grouped by {groupBy === 'url' ? 'URL' : groupBy === 'type' ? 'Type' : 'Severity'}
+      {/if}
+      {#if sortBy === 'priority'}
+        | Sorted by Priority (highest first)
       {/if}
     </div>
 
@@ -271,15 +335,26 @@
         {/if}
         
         {#each groupIssues as issue}
-          <div class="alert {getSeverityBadge(issue.severity)} shadow-lg">
+          {@const priorityScore = calculatePriorityScore(issue)}
+          {@const issueId = `${issue.url}|${issue.type}`}
+          {@const isTopPriority = top10PriorityIssues.has(issueId)}
+          <div class="alert {getSeverityBadge(issue.severity)} shadow-lg {isTopPriority ? 'ring-2 ring-warning ring-offset-2' : ''}">
             <div class="flex-1">
-              <div class="flex items-center gap-2 mb-2">
+              <div class="flex items-center gap-2 mb-2 flex-wrap">
                 <span class="badge {getSeverityBadge(issue.severity)}">
                   {issue.severity}
                 </span>
                 <span class="badge badge-outline">
                   {issue.type.replace(/_/g, ' ')}
                 </span>
+                <span class="badge badge-primary">
+                  Priority: {priorityScore}
+                </span>
+                {#if isTopPriority}
+                  <span class="badge badge-warning">
+                    🔥 Top Priority
+                  </span>
+                {/if}
                 {#if groupBy === 'url' && affectedPagesCounts[issue.type]}
                   <span class="badge badge-ghost">
                     {affectedPagesCounts[issue.type]} page{affectedPagesCounts[issue.type] !== 1 ? 's' : ''} affected

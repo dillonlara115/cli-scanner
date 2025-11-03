@@ -358,10 +358,12 @@ apiMux.HandleFunc("/api/new-endpoint", func(w http.ResponseWriter, r *http.Reque
 - NOT shown for `--help`, `--version`, `help`
 - Displayed in `cmd/root.go` Run function
 
-### 7. Frontend Build
-- Frontend must be built (`make frontend-build`) before serving
-- Built files go to `web/dist/`
-- SPA routing: All routes serve `index.html` except `/api/*`
+### 7. Frontend Build & Embedding
+- Frontend **must** be built (`make frontend-build`) before compiling Go binary
+- Frontend files are embedded into the binary using `go:embed`
+- Binary works from any directory - no need for `web/dist/` at runtime
+- For development with `go run`, falls back to filesystem if embedded files not found
+- Build process: `make build` automatically builds frontend first
 
 ### 8. Export Paths
 - Default: `results.csv` or `results.json` in current directory
@@ -501,7 +503,10 @@ make serve
 **Solution:** Check `queueClosed` atomic flag, wait for pending tasks to complete
 
 ### Issue: Frontend not loading
-**Solution:** Ensure `make frontend-build` was run, check `web/dist/` exists
+**Solution:** 
+- For production builds: Frontend is embedded into the binary. Ensure `make frontend-build` was run before `make build` or `go build`.
+- For development: When using `go run`, frontend files are served from `web/dist/` directory (fallback mode).
+- Build process: The Makefile automatically builds frontend before Go build (`build: frontend-build`).
 
 ### Issue: Banner not showing
 **Solution:** Check `cmd/root.go` Run function, ensure not triggered by help/version flags

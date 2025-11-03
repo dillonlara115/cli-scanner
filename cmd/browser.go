@@ -35,14 +35,6 @@ func openBrowserURL(url string) error {
 
 // startServerAndOpenBrowser starts the serve command and opens the browser
 func startServerAndOpenBrowser(resultsPath, graphPath string) error {
-	// Check if frontend is built
-	if _, err := os.Stat("web/dist"); os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "\n⚠️  Frontend not built. Skipping browser open.\n")
-		fmt.Fprintf(os.Stderr, "   Run 'make frontend-build' to build the frontend, then run:\n")
-		fmt.Fprintf(os.Stderr, "   barracuda serve --results %s --graph %s\n", resultsPath, graphPath)
-		return nil
-	}
-
 	// Start server in background
 	fmt.Fprintf(os.Stdout, "\n🚀 Starting web server...\n")
 	fmt.Fprintf(os.Stdout, "📊 Opening dashboard in browser...\n")

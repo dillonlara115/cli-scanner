@@ -75,15 +75,15 @@ This document tracks planned improvements for the Barracuda web dashboard to bet
 
 ---
 
-### [ ] Issue Priority Scoring
+### [✅] Issue Priority Scoring
 **Priority:** Medium  
 **Impact:** High  
 **Effort:** Medium
 
-- [ ] Calculate priority score: `severity_weight * pages_affected`
-- [ ] Display priority score in issue cards
-- [ ] Add "Sort by Priority" option
-- [ ] Highlight top 10 priority issues
+- [✅] Calculate priority score: `severity_weight * pages_affected`
+- [✅] Display priority score in issue cards
+- [✅] Add "Sort by Priority" option
+- [✅] Highlight top 10 priority issues
 
 **Files to modify:**
 - `web/src/components/IssuesPanel.svelte`
@@ -93,19 +93,21 @@ This document tracks planned improvements for the Barracuda web dashboard to bet
 - Severity weights: error=10, warning=5, info=1
 - Pages affected = count of unique URLs with this issue type
 - Display as badge or numeric score
+- Priority scores included in CSV/JSON exports
+- Top 10 issues highlighted with warning ring and "🔥 Top Priority" badge
 
 ---
 
-### [ ] Page-Level Issue View
+### [✅] Page-Level Issue View
 **Priority:** High  
 **Impact:** High  
 **Effort:** Medium
 
-- [ ] Make ResultsTable rows clickable
-- [ ] Show modal/sidebar with page details + all issues for that page
-- [ ] Add "View Issues" button in table row
-- [ ] Filter ResultsTable: "Show pages with issues only" checkbox
-- [ ] Add issue count badge to each row
+- [✅] Make ResultsTable rows clickable
+- [✅] Show modal/sidebar with page details + all issues for that page
+- [✅] Add "View Issues" button in table row
+- [✅] Filter ResultsTable: "Show pages with issues only" checkbox
+- [✅] Add issue count badge to each row
 
 **Files to modify:**
 - `web/src/components/ResultsTable.svelte`
@@ -115,6 +117,8 @@ This document tracks planned improvements for the Barracuda web dashboard to bet
 - Could use modal or expandable row
 - Link to Issues tab filtered by URL
 - Show page metadata: title, meta desc, headings, etc.
+- Modal displays full page details including SEO metadata, headings, links, images, and all issues for that page
+- "View Issues" button navigates to Issues tab filtered by that specific URL
 
 ---
 

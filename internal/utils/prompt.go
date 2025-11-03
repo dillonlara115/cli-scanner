@@ -3,6 +3,7 @@ package utils
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -174,6 +175,114 @@ func PromptChoice(prompt string, choices []string, defaultValue string) (string,
 	}
 }
 
+// PromptSelect prompts the user to select from choices using arrow keys
+// Falls back to PromptChoice if terminal doesn't support ANSI codes
+func PromptSelect(prompt string, choices []string, defaultValue string) (string, error) {
+	if len(choices) == 0 {
+		return "", fmt.Errorf("no choices provided")
+	}
+
+	// Find default index
+	defaultIndex := 0
+	for i, choice := range choices {
+		if choice == defaultValue {
+			defaultIndex = i
+			break
+		}
+	}
+
+	// Check if we're in a terminal that supports ANSI codes
+	term := os.Getenv("TERM")
+	if term == "" || term == "dumb" {
+		// Fallback to simple numbered selection
+		return PromptChoice(prompt, choices, defaultValue)
+	}
+
+	// Check if stdin is a terminal
+	fileInfo, err := os.Stdin.Stat()
+	if err != nil || (fileInfo.Mode()&os.ModeCharDevice) == 0 {
+		// Not a terminal, use fallback
+		return PromptChoice(prompt, choices, defaultValue)
+	}
+
+	selected := defaultIndex
+	
+	fmt.Printf("%s\n", prompt)
+	
+	// Hide cursor
+	fmt.Print("\033[?25l")
+	defer fmt.Print("\033[?25h") // Show cursor on exit
+
+	// Render function
+	render := func() {
+		// Move cursor up to start of menu (lines = len(choices) + 1 for prompt)
+		for i := 0; i <= len(choices); i++ {
+			fmt.Print("\033[1A\033[K") // Move up and clear line
+		}
+		
+		// Print menu
+		for i, choice := range choices {
+			if i == selected {
+				fmt.Printf("  \033[32m▶\033[0m %s\n", choice) // Green arrow for selected
+			} else {
+				fmt.Printf("    %s\n", choice)
+			}
+		}
+	}
+
+	// Initial render
+	render()
+
+	// Set terminal to raw mode (simplified - works on Unix)
+	// For cross-platform, we'll try to read escape sequences
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		char, _, err := reader.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return "", err
+		}
+
+		// Handle escape sequences (arrow keys)
+		if char == '\x1b' {
+			// Peek at next bytes without consuming
+			buf := make([]byte, 2)
+			n, _ := reader.Read(buf)
+			if n == 2 {
+				if buf[0] == '[' {
+					if buf[1] == 'A' {
+						// Up arrow
+						if selected > 0 {
+							selected--
+							render()
+						}
+						continue
+					} else if buf[1] == 'B' {
+						// Down arrow
+						if selected < len(choices)-1 {
+							selected++
+							render()
+						}
+						continue
+					}
+				}
+			}
+		} else if char == '\r' || char == '\n' {
+			// Enter key
+			fmt.Print("\n")
+			return choices[selected], nil
+		} else if char == '\x03' {
+			// Ctrl+C
+			fmt.Print("\033[?25h") // Show cursor
+			return "", fmt.Errorf("interrupted")
+		}
+	}
+
+	return choices[selected], nil
+}
+
 // PromptInteractive prompts the user for all crawl configuration interactively
 func PromptInteractive() (*Config, string, string, bool, error) {
 	fmt.Println()
@@ -210,15 +319,8 @@ func PromptInteractive() (*Config, string, string, bool, error) {
 	
 	fmt.Printf("\n📁 Results will be saved to: %s/\n\n", crawlDir)
 	
-	// Get max pages
-	maxPagesInput, err := PromptInt("How many pages do you want to scan? (leave blank for unlimited)", 1000, false)
-	if err != nil {
-		return nil, "", "", false, err
-	}
-	maxPages := maxPagesInput
-	if maxPages == 0 {
-		maxPages = 999999 // Very large number for "unlimited"
-	}
+	// Default to unlimited pages (no prompt)
+	maxPages := 0 // Will be set to 999999 for "unlimited"
 	
 	// Default to unlimited depth (no prompt)
 	maxDepth := 9999 // Very large number for "unlimited"
@@ -226,8 +328,8 @@ func PromptInteractive() (*Config, string, string, bool, error) {
 	// Default to 10 workers (no prompt)
 	workers := 10
 	
-	// Get export format
-	format, err := PromptChoice("Export format?", []string{"csv", "json"}, "csv")
+	// Get export format (using arrow key selection, default to JSON)
+	format, err := PromptSelect("Export format?", []string{"json", "csv"}, "json")
 	if err != nil {
 		return nil, "", "", false, err
 	}
@@ -255,21 +357,22 @@ func PromptInteractive() (*Config, string, string, bool, error) {
 	// Advanced options
 	fmt.Println("\n📋 Advanced Options:")
 	
-	respectRobots, err := PromptBool("Respect robots.txt?", true)
-	if err != nil {
-		return nil, "", "", false, err
-	}
+	// Default to respecting robots.txt (no prompt)
+	respectRobots := true
 	
-	parseSitemap, err := PromptBool("Parse sitemap.xml for seed URLs?", false)
-	if err != nil {
-		return nil, "", "", false, err
-	}
+	// Default to parsing sitemap.xml (no prompt)
+	parseSitemap := true
 	
 	// Always export link graph (no prompt)
 	graphExport := filepath.Join(crawlDir, "graph.json")
 	
 	// Always open browser after crawl (no prompt)
 	openBrowser := true
+	
+	// Set maxPages to unlimited if 0
+	if maxPages == 0 {
+		maxPages = 999999 // Very large number for "unlimited"
+	}
 	
 	// Build config
 	config := &Config{

@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +14,9 @@ import (
 	"github.com/dillonlara115/barracuda/pkg/models"
 	"github.com/spf13/cobra"
 )
+
+// FrontendFiles is set by main package via SetFrontendFiles
+var frontendFiles fs.FS
 
 var (
 	servePort    int
@@ -111,17 +115,41 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}
 	})
 
-	// Serve static files from web/dist (after build)
-	webDir := "web/dist"
-	if _, err := os.Stat(webDir); os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "⚠️  Frontend not built. Run 'make frontend-build' or 'cd web && npm install && npm run build' first.\n")
-		fmt.Fprintf(os.Stderr, "📁 Serving API only. Frontend files not found at %s\n", webDir)
-		// Only serve API endpoints
-		http.Handle("/", apiMux)
-	} else {
+	// Serve static files from embedded frontend or fallback to filesystem
+	// Try embedded files first (production build)
+	var fileServer http.Handler
+	var useEmbedded bool
+	
+	// Check if embedded files exist (they should if frontend was built before Go build)
+	if frontendFiles != nil {
+		// Try to read from embedded files
+		if entries, err := fs.ReadDir(frontendFiles, "web/dist"); err == nil && len(entries) > 0 {
+			// Use embedded files
+			fsys, err := fs.Sub(frontendFiles, "web/dist")
+			if err == nil {
+				fileServer = http.FileServer(http.FS(fsys))
+				useEmbedded = true
+			}
+		}
+	}
+	
+	// Fallback to filesystem (for development)
+	if !useEmbedded {
+		webDir := "web/dist"
+		if _, err := os.Stat(webDir); os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "⚠️  Frontend not built. Run 'make frontend-build' or 'cd web && npm install && npm run build' first.\n")
+			fmt.Fprintf(os.Stderr, "📁 Serving API only. Frontend files not found at %s\n", webDir)
+			// Only serve API endpoints
+			http.Handle("/", apiMux)
+		} else {
+			// Use filesystem
+			fileServer = http.FileServer(http.Dir(webDir))
+			useEmbedded = false
+		}
+	}
+	
+	if fileServer != nil {
 		// Serve static files with SPA routing support
-		fileServer := http.FileServer(http.Dir(webDir))
-		
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			// Handle API routes first
 			if strings.HasPrefix(r.URL.Path, "/api/") {
@@ -129,19 +157,46 @@ func runServe(cmd *cobra.Command, args []string) error {
 				return
 			}
 			
-			// Check if file exists
-			path := filepath.Join(webDir, r.URL.Path)
-			if info, err := os.Stat(path); err == nil && !info.IsDir() {
-				fileServer.ServeHTTP(w, r)
-				return
-			}
-			
-			// For SPA routing, serve index.html for all non-API routes
-			indexPath := filepath.Join(webDir, "index.html")
-			if _, err := os.Stat(indexPath); err == nil {
-				http.ServeFile(w, r, indexPath)
+			if useEmbedded {
+				// For embedded files, check if file exists
+				fsys, _ := fs.Sub(frontendFiles, "web/dist")
+				path := strings.TrimPrefix(r.URL.Path, "/")
+				if path == "" {
+					path = "index.html"
+				}
+				
+				// Try to open the file
+				if f, err := fsys.Open(path); err == nil {
+					defer f.Close()
+					// Get file info to check if it's a directory
+					if info, err := f.Stat(); err == nil && !info.IsDir() {
+						fileServer.ServeHTTP(w, r)
+						return
+					}
+				}
+				
+				// For SPA routing, serve index.html for all non-API routes
+				if _, err := fsys.Open("index.html"); err == nil {
+					r.URL.Path = "/index.html"
+					fileServer.ServeHTTP(w, r)
+				} else {
+					http.NotFound(w, r)
+				}
 			} else {
-				fileServer.ServeHTTP(w, r)
+				// Filesystem fallback
+				path := filepath.Join("web/dist", r.URL.Path)
+				if info, err := os.Stat(path); err == nil && !info.IsDir() {
+					fileServer.ServeHTTP(w, r)
+					return
+				}
+				
+				// For SPA routing, serve index.html for all non-API routes
+				indexPath := filepath.Join("web/dist", "index.html")
+				if _, err := os.Stat(indexPath); err == nil {
+					http.ServeFile(w, r, indexPath)
+				} else {
+					fileServer.ServeHTTP(w, r)
+				}
 			}
 		})
 	}
@@ -155,5 +210,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// SetFrontendFiles sets the embedded frontend filesystem
+func SetFrontendFiles(fs fs.FS) {
+	frontendFiles = fs
 }
 
