@@ -20,7 +20,39 @@ OAuth works like this:
 
 ## Setup
 
-### Step 1: Enable Search Console API in Google Cloud
+### Step 1: Configure OAuth Credentials
+
+**IMPORTANT**: You must set up OAuth credentials before using GSC integration.
+
+**Option 1: Use .env file (Recommended)**
+
+1. Copy the example file:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edit `.env` and add your credentials:
+   ```bash
+   GSC_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   GSC_CLIENT_SECRET=your-client-secret
+   ```
+
+3. Load environment variables when running:
+   ```bash
+   export $(cat .env | xargs) && barracuda serve --results results.json
+   ```
+
+**Option 2: Export environment variables**
+
+```bash
+export GSC_CLIENT_ID='your-client-id.apps.googleusercontent.com'
+export GSC_CLIENT_SECRET='your-client-secret'
+barracuda serve --results results.json
+```
+
+See `docs/GSC_CREDENTIALS.md` for more details.
+
+### Step 2: Enable Search Console API in Google Cloud
 
 Before using GSC integration, you need to:
 

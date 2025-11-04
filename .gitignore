@@ -28,6 +28,11 @@ Thumbs.db
 # Frontend build output
 web/dist/
 
+# Environment variables - NEVER commit these!
+.env
+.env.local
+.env.*.local
+
 # Project specific
 results.*
 *.csv
