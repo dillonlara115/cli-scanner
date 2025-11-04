@@ -1,4 +1,4 @@
-.PHONY: build test install clean release frontend-build frontend-dev serve
+.PHONY: build test install clean release frontend-build frontend-dev serve docker-build docker-push deploy-backend
 
 # Build the binary (requires frontend to be built first)
 build: frontend-build
@@ -76,3 +76,91 @@ frontend-dev:
 serve:
 	go run . serve --results results.json --graph graph.json
 
+# Docker and Cloud Run deployment targets
+# Set these environment variables:
+#   GCP_PROJECT_ID - Your Google Cloud project ID
+#   GCP_REGION - Region for deployment (default: us-central1)
+#   IMAGE_NAME - Docker image name (default: barracuda-api)
+
+GCP_PROJECT_ID ?= $(shell gcloud config get-value project 2>/dev/null)
+GCP_REGION ?= us-central1
+IMAGE_NAME ?= barracuda-api
+IMAGE_TAG ?= latest
+REPOSITORY ?= barracuda
+ENV_FILE ?= $(CURDIR)/.env
+IMAGE_URI = $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(REPOSITORY)/$(IMAGE_NAME):$(IMAGE_TAG)
+
+# Build Docker image
+docker-build:
+	@if [ -z "$(GCP_PROJECT_ID)" ]; then \
+		echo "Error: GCP_PROJECT_ID not set. Set it or run: gcloud config set project YOUR_PROJECT_ID"; \
+		exit 1; \
+	fi
+	@echo "Building Docker image: $(IMAGE_URI)"
+	docker build -t $(IMAGE_URI) .
+	@echo "✓ Docker image built successfully"
+
+# Push Docker image to Artifact Registry
+docker-push: docker-build
+	@if [ -z "$(GCP_PROJECT_ID)" ]; then \
+		echo "Error: GCP_PROJECT_ID not set"; \
+		exit 1; \
+	fi
+	@echo "Pushing Docker image to Artifact Registry..."
+	gcloud auth configure-docker $(GCP_REGION)-docker.pkg.dev --quiet
+	docker push $(IMAGE_URI)
+	@echo "✓ Docker image pushed successfully"
+
+# Deploy to Cloud Run
+deploy-backend: docker-push
+	@set -a; \
+	if [ -f "$(ENV_FILE)" ]; then \
+		echo "Loading environment variables from $(ENV_FILE)..."; \
+		. "$(ENV_FILE)"; \
+	else \
+		echo "No env file found at $(ENV_FILE); skipping"; \
+	fi; \
+	set +a; \
+	if [ -z "$$GCP_PROJECT_ID" ] && [ -z "$(GCP_PROJECT_ID)" ]; then \
+		GCP_PROJECT_ID=$$(gcloud config get-value project 2>/dev/null); \
+		if [ -z "$$GCP_PROJECT_ID" ]; then \
+			echo "Error: GCP_PROJECT_ID not set"; \
+			exit 1; \
+		fi; \
+	fi; \
+	if [ -z "$$PUBLIC_SUPABASE_URL" ] && [ -z "$(PUBLIC_SUPABASE_URL)" ]; then \
+		echo "Error: PUBLIC_SUPABASE_URL not set. Set it in $(ENV_FILE) or export it."; \
+		exit 1; \
+	fi; \
+	if [ -z "$$PUBLIC_SUPABASE_ANON_KEY" ] && [ -z "$(PUBLIC_SUPABASE_ANON_KEY)" ]; then \
+		echo "Error: PUBLIC_SUPABASE_ANON_KEY not set. Set it in $(ENV_FILE) or export it."; \
+		exit 1; \
+	fi; \
+	echo "Deploying to Cloud Run..."; \
+	SUPABASE_URL="$${PUBLIC_SUPABASE_URL:-$(PUBLIC_SUPABASE_URL)}"; \
+	SUPABASE_ANON="$${PUBLIC_SUPABASE_ANON_KEY:-$(PUBLIC_SUPABASE_ANON_KEY)}"; \
+	GCP_PROJ="$${GCP_PROJECT_ID:-$(GCP_PROJECT_ID)}"; \
+	GCP_REG="$${GCP_REGION:-$(GCP_REGION)}"; \
+	gcloud run deploy $(IMAGE_NAME) \
+		--image $$GCP_REG-docker.pkg.dev/$$GCP_PROJ/$(REPOSITORY)/$(IMAGE_NAME):$(IMAGE_TAG) \
+		--platform managed \
+		--region $$GCP_REG \
+		--allow-unauthenticated \
+		--set-env-vars="PUBLIC_SUPABASE_URL=$$SUPABASE_URL,PUBLIC_SUPABASE_ANON_KEY=$$SUPABASE_ANON" \
+		--set-secrets="SUPABASE_SERVICE_ROLE_KEY=supabase-service-role-key:latest" \
+		--memory=512Mi \
+		--cpu=1 \
+		--timeout=300 \
+		--max-instances=10 \
+		--port=8080 \
+		--quiet; \
+	echo "✓ Deployment complete!"; \
+	echo "Service URL:"; \
+	GCP_REG="$${GCP_REGION:-$(GCP_REGION)}"; \
+	gcloud run services describe $(IMAGE_NAME) \
+		--platform managed \
+		--region $$GCP_REG \
+		--format="value(status.url)"
+
+# Quick deploy (rebuild and deploy in one command)
+deploy: deploy-backend

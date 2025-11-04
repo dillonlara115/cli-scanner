@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dillonlara115/barracuda/internal/api"
+	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
@@ -41,6 +42,10 @@ func init() {
 }
 
 func runAPI(cmd *cobra.Command, args []string) error {
+	// Load .env file if it exists (for local development)
+	// Ignore errors - .env file is optional
+	_ = godotenv.Load()
+
 	// Initialize logger
 	logger, err := zap.NewProduction()
 	if err != nil {
