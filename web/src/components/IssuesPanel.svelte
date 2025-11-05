@@ -289,7 +289,7 @@
           <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
             <div class="space-y-2">
               <div class="text-xs font-semibold uppercase tracking-wide text-base-content/70">Severity</div>
-              <form class="filter filter-sm gap-2">
+              <form class="filter filter-sm flex gap-2">
                 {#each severityOptions as option}
                   <input
                     class="btn"
@@ -306,7 +306,7 @@
 
             <div class="space-y-2">
               <div class="text-xs font-semibold uppercase tracking-wide text-base-content/70">Type</div>
-              <form class="filter filter-sm gap-2">
+              <form class="filter filter-sm flex gap-2">
                 {#each typeFilterOptions as option}
                   <input
                     class="btn"
@@ -382,13 +382,13 @@
           {@const issueId = `${issue.url}|${issue.type}`}
           {@const isTopPriority = top10PriorityIssues.has(issueId)}
           {@const enriched = enrichedIssues[issueId]}
-          <div class="alert {getSeverityBadge(issue.severity)} shadow-lg {isTopPriority ? 'ring-2 ring-warning ring-offset-2' : ''}">
+          <div class="alert {getSeverityBadge(issue.severity)} shadow-lg">
             <div class="flex-1">
               <div class="flex items-center gap-2 mb-2 flex-wrap">
                 <span class="badge {getSeverityBadge(issue.severity)}">
                   {issue.severity}
                 </span>
-                <span class="badge badge-outline">
+                <span class="badge {issue.severity === 'warning' || issue.severity === 'info' ? 'badge-ghost' : 'badge-outline'}">
                   {issue.type.replace(/_/g, ' ')}
                 </span>
                 <span class="badge badge-primary">
@@ -445,7 +445,11 @@
               
               <div class="text-sm mt-2">
                 <div class="font-semibold">URL:</div>
-                <a href={issue.url} target="_blank" class="link link-primary break-all">
+                <a 
+                  href={issue.url} 
+                  target="_blank" 
+                  class="break-all underline hover:opacity-80 {issue.severity === 'info' || issue.severity === 'warning' ? '' : 'link link-primary'}"
+                >
                   {issue.url}
                 </a>
               </div>

@@ -124,11 +124,11 @@
         <option value="error">Error (4xx/5xx)</option>
         <option value="failed">Failed</option>
       </select>
-      <label class="label cursor-pointer gap-2">
+      <label class="label cursor-pointer flex gap-2">
         <span class="label-text">Slow only (>2s)</span>
         <input type="checkbox" class="checkbox checkbox-primary" bind:checked={showSlowOnly} />
       </label>
-      <label class="label cursor-pointer gap-2">
+      <label class="label cursor-pointer flex gap-2">
         <span class="label-text">With issues only</span>
         <input type="checkbox" class="checkbox checkbox-primary" bind:checked={showIssuesOnly} />
       </label>

@@ -17,3 +17,16 @@ html, body {
   min-height: 100vh;
 }
 
+/* Remove white borders from alert cards */
+.alert {
+  border: none !important;
+}
+
+.alert-warning,
+.alert-info,
+.alert-error,
+.alert-success {
+  border: none !important;
+  outline: none !important;
+}
+

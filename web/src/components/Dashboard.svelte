@@ -75,7 +75,7 @@
 <div class="navbar bg-base-100 shadow-lg border-b border-base-300">
  
   <div class="flex-none">
-    <ul class="menu menu-horizontal px-1">
+    <ul class="menu menu-horizontal px-1 flex gap-2">
       <li>
         <button 
           type="button" 

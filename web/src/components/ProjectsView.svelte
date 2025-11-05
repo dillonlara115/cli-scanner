@@ -54,13 +54,13 @@
   }
 </script>
 
-<div class="navbar bg-base-100 shadow-lg border-b border-base-300">
+<div class="navbar bg-base-100 shadow-lg border-b border-base-300 gap-2">
   <div class="flex-1">
     <a href="/" use:link class="btn btn-ghost">
       <Logo size="md" />
     </a>
   </div>
-  <div class="flex-none gap-2">
+  <div class="flex gap-2">
     <Auth />
     <div class="dropdown dropdown-end">
       <button type="button" tabindex="0" class="btn btn-ghost">
