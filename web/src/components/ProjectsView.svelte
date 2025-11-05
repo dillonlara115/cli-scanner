@@ -83,7 +83,6 @@
             </a>
           </li>
         {/each}
-        <li><hr class="my-2" /></li>
         <li>
           <a on:click={() => showCreateModal = true}>
             <span>+ Create New Project</span>

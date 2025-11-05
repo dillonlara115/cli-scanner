@@ -32,6 +32,37 @@ export async function fetchCrawls(projectId) {
   }
 }
 
+// Fetch a single crawl by ID
+export async function fetchCrawl(crawlId) {
+  try {
+    const { data, error } = await supabase
+      .from('crawls')
+      .select('*')
+      .eq('id', crawlId)
+      .single();
+
+    if (error) throw error;
+    return { data, error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
+}
+
+// Fetch page count for a crawl (for progress tracking)
+export async function fetchCrawlPageCount(crawlId) {
+  try {
+    const { count, error } = await supabase
+      .from('pages')
+      .select('*', { count: 'exact', head: true })
+      .eq('crawl_id', crawlId);
+
+    if (error) throw error;
+    return { count: count || 0, error: null };
+  } catch (error) {
+    return { count: 0, error };
+  }
+}
+
 // Fetch pages for a crawl
 export async function fetchPages(crawlId) {
   try {

@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dillonlara115/barracuda/internal/analyzer"
 	"github.com/dillonlara115/barracuda/internal/crawler"
 	"github.com/dillonlara115/barracuda/internal/utils"
+	"github.com/dillonlara115/barracuda/pkg/models"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
@@ -351,8 +354,22 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 // handleProjectByID handles project operations by ID
 func (s *Server) handleProjectByID(w http.ResponseWriter, r *http.Request) {
 	// Extract project ID from path
+	// After StripPrefix("/api/v1"), the path is like "/projects/:id/crawl"
+	s.logger.Debug("handleProjectByID called", zap.String("path", r.URL.Path), zap.String("method", r.Method))
+	
 	path := strings.TrimPrefix(r.URL.Path, "/projects/")
+	
+	// Remove leading/trailing slashes and split
+	path = strings.Trim(path, "/")
 	parts := strings.Split(path, "/")
+	
+	s.logger.Debug("Path parsing", zap.String("trimmed_path", path), zap.Strings("parts", parts))
+	
+	if len(parts) == 0 {
+		s.respondError(w, http.StatusBadRequest, "project_id is required")
+		return
+	}
+	
 	projectID := parts[0]
 
 	if projectID == "" {
@@ -385,7 +402,8 @@ func (s *Server) handleProjectByID(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		default:
-			s.respondError(w, http.StatusNotFound, "Resource not found")
+			s.logger.Debug("Unknown resource", zap.String("resource", resource), zap.String("path", r.URL.Path), zap.Strings("parts", parts))
+			s.respondError(w, http.StatusNotFound, fmt.Sprintf("Resource not found: %s", resource))
 			return
 		}
 	}
@@ -579,6 +597,8 @@ func (s *Server) runCrawlAsync(crawlID, projectID string, req TriggerCrawlReques
 		RespectRobots: req.RespectRobots,
 		ParseSitemap:  req.ParseSitemap,
 		DomainFilter:  "same",
+		ExportFormat:  "csv", // Required for validation, but not used since we store in DB
+		ExportPath:    "",     // Not used for web crawls
 	}
 
 	// Validate config
@@ -591,23 +611,18 @@ func (s *Server) runCrawlAsync(crawlID, projectID string, req TriggerCrawlReques
 	// Create crawler manager
 	manager := crawler.NewManager(config)
 
-	// Run crawl
-	results, err := manager.Crawl()
-	if err != nil {
-		s.logger.Error("Crawl failed", zap.Error(err))
-		s.updateCrawlStatus(crawlID, "failed", err.Error())
-		return
-	}
+	// Track pages and page URL to ID mapping for real-time storage
+	batchSize := 50 // Smaller batches for more frequent updates
+	pages := make([]map[string]interface{}, 0, batchSize)
+	pageURLToID := make(map[string]int64)
+	var pagesMu sync.Mutex
+	totalPagesProcessed := int32(0)
 
-	// Analyze results
-	summary := analyzer.AnalyzeWithImages(results, config.Timeout)
+	// Set up progress callback to store pages in real-time
+	manager.SetProgressCallback(func(page *models.PageResult, totalPages int) {
+		pagesMu.Lock()
+		defer pagesMu.Unlock()
 
-	// Store pages in batches
-	batchSize := 1000
-	pages := make([]map[string]interface{}, 0, len(results))
-	pageURLToID := make(map[string]int64) // Track page IDs for issues
-
-	for i, page := range results {
 		pageData := map[string]interface{}{
 			"crawl_id":         crawlID,
 			"url":              page.URL,
@@ -631,8 +646,8 @@ func (s *Server) runCrawlAsync(crawlID, projectID string, req TriggerCrawlReques
 		}
 		pages = append(pages, pageData)
 
-		// Insert in batches and track IDs
-		if len(pages) >= batchSize || i == len(results)-1 {
+		// Insert in batches and update progress
+		if len(pages) >= batchSize {
 			var pageResults []map[string]interface{}
 			data, _, err := s.serviceRole.From("pages").Insert(pages, false, "", "", "").Execute()
 			if err != nil {
@@ -646,10 +661,55 @@ func (s *Server) runCrawlAsync(crawlID, projectID string, req TriggerCrawlReques
 						}
 					}
 				}
+
+				// Update crawl total_pages in real-time
+				atomic.AddInt32(&totalPagesProcessed, int32(len(pages)))
+				currentTotal := int(atomic.LoadInt32(&totalPagesProcessed))
+				update := map[string]interface{}{
+					"total_pages": currentTotal,
+				}
+				_, _, err = s.serviceRole.From("crawls").Update(update, "", "").Eq("id", crawlID).Execute()
+				if err != nil {
+					s.logger.Warn("Failed to update crawl progress", zap.Error(err))
+				} else {
+					s.logger.Debug("Updated crawl progress", zap.Int("total_pages", currentTotal))
+				}
 			}
 			pages = make([]map[string]interface{}, 0, batchSize)
 		}
+	})
+
+	// Run crawl
+	results, err := manager.Crawl()
+	if err != nil {
+		s.logger.Error("Crawl failed", zap.Error(err))
+		s.updateCrawlStatus(crawlID, "failed", err.Error())
+		return
 	}
+
+	// Store any remaining pages
+	pagesMu.Lock()
+	if len(pages) > 0 {
+		var pageResults []map[string]interface{}
+		data, _, err := s.serviceRole.From("pages").Insert(pages, false, "", "", "").Execute()
+		if err != nil {
+			s.logger.Error("Failed to insert final pages batch", zap.Error(err))
+		} else {
+			// Parse inserted pages to get IDs
+			if err := json.Unmarshal(data, &pageResults); err == nil {
+				for j, pageResult := range pageResults {
+					if pageID, ok := pageResult["id"].(float64); ok {
+						pageURLToID[pages[j]["url"].(string)] = int64(pageID)
+					}
+				}
+			}
+		}
+	}
+	finalTotal := int(atomic.LoadInt32(&totalPagesProcessed))
+	pagesMu.Unlock()
+
+	// Analyze results
+	summary := analyzer.AnalyzeWithImages(results, config.Timeout)
 
 	// Store issues
 	issues := make([]map[string]interface{}, 0, len(summary.Issues))
@@ -687,10 +747,10 @@ func (s *Server) runCrawlAsync(crawlID, projectID string, req TriggerCrawlReques
 		}
 	}
 
-	// Update crawl status to succeeded
+	// Update crawl status to succeeded (total_pages already updated via callback)
 	s.updateCrawlStatus(crawlID, "succeeded", "")
 	update := map[string]interface{}{
-		"total_pages":  len(results),
+		"total_pages":  finalTotal, // Use the final count from callback
 		"total_issues": len(summary.Issues),
 		"completed_at": time.Now().UTC().Format(time.RFC3339),
 	}
@@ -721,23 +781,64 @@ func (s *Server) updateCrawlStatus(crawlID, status, errorMsg string) {
 }
 
 // verifyProjectAccess checks if user has access to a project
+// Uses service role client to bypass RLS since we've already validated the user's token
 func (s *Server) verifyProjectAccess(userID, projectID string) (bool, error) {
+	s.logger.Debug("Verifying project access", zap.String("user_id", userID), zap.String("project_id", projectID))
+	
+	// First check if user is a project member (using service role to bypass RLS)
 	var members []map[string]interface{}
-	data, _, err := s.supabase.From("project_members").
+	data, _, err := s.serviceRole.From("project_members").
 		Select("*", "", false).
 		Eq("project_id", projectID).
 		Eq("user_id", userID).
 		Execute()
 
 	if err != nil {
+		s.logger.Error("Failed to query project_members", zap.Error(err))
 		return false, err
 	}
 
 	// Parse data into members slice
 	if err := json.Unmarshal(data, &members); err != nil {
+		s.logger.Error("Failed to parse project_members data", zap.Error(err))
 		return false, err
 	}
 
-	return len(members) > 0, nil
+	s.logger.Debug("Project members check", zap.Int("member_count", len(members)))
+
+	if len(members) > 0 {
+		return true, nil
+	}
+
+	// If not a member, check if user is the project owner (using service role to bypass RLS)
+	var projects []map[string]interface{}
+	projectData, _, err := s.serviceRole.From("projects").
+		Select("owner_id", "", false).
+		Eq("id", projectID).
+		Execute()
+
+	if err != nil {
+		s.logger.Error("Failed to query projects", zap.Error(err))
+		return false, err
+	}
+
+	// Parse data into projects slice
+	if err := json.Unmarshal(projectData, &projects); err != nil {
+		s.logger.Error("Failed to parse projects data", zap.Error(err))
+		return false, err
+	}
+
+	s.logger.Debug("Projects check", zap.Int("project_count", len(projects)))
+
+	if len(projects) > 0 {
+		ownerID, ok := projects[0]["owner_id"].(string)
+		s.logger.Debug("Owner check", zap.String("owner_id", ownerID), zap.Bool("type_ok", ok), zap.Bool("matches", ok && ownerID == userID))
+		if ok && ownerID == userID {
+			return true, nil
+		}
+	}
+
+	s.logger.Debug("Access denied", zap.String("user_id", userID), zap.String("project_id", projectID))
+	return false, nil
 }
 

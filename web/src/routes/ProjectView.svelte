@@ -101,7 +101,7 @@
   <div class="container mx-auto p-4">
     <div class="flex justify-between items-center mb-4">
       <h2 class="text-2xl font-bold text-base-content">Crawls</h2>
-      <TriggerCrawlButton {projectId} on:created={handleCrawlCreated} />
+      <TriggerCrawlButton {projectId} project={project} on:created={handleCrawlCreated} />
     </div>
     
     {#if crawls.length === 0}

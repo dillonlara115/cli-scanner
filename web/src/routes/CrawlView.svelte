@@ -162,7 +162,7 @@
   <div class="container mx-auto p-4">
     <div class="flex justify-between items-center mb-4">
       <CrawlSelector {crawls} selectedCrawl={selectedCrawl} on:select={(e) => handleCrawlSelect(e.detail)} />
-      <TriggerCrawlButton {projectId} on:created={handleCrawlCreated} />
+      <TriggerCrawlButton {projectId} project={project} on:created={handleCrawlCreated} />
     </div>
   </div>
   

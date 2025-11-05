@@ -9,12 +9,21 @@
   let showCreateModal = false;
   let newProjectName = '';
   let newProjectDomain = '';
+  let newProjectUrl = '';
   let creating = false;
   let error = null;
 
   async function handleCreateProject() {
-    if (!newProjectName || !newProjectDomain) {
-      error = 'Name and domain are required';
+    if (!newProjectName || !newProjectDomain || !newProjectUrl) {
+      error = 'Name, domain, and URL are required';
+      return;
+    }
+
+    // Validate URL format
+    try {
+      new URL(newProjectUrl);
+    } catch (e) {
+      error = 'Invalid URL format';
       return;
     }
 
@@ -24,7 +33,8 @@
     try {
       const { data, error: createError } = await createProject(
         newProjectName,
-        newProjectDomain
+        newProjectDomain,
+        { url: newProjectUrl }
       );
 
       if (createError) throw createError;
@@ -35,6 +45,7 @@
       // Reset form and close modal
       newProjectName = '';
       newProjectDomain = '';
+      newProjectUrl = '';
       showCreateModal = false;
     } catch (err) {
       error = err.message || 'Failed to create project';
@@ -87,6 +98,21 @@
         />
       </div>
 
+      <div class="form-control w-full mb-4">
+        <label class="label">
+          <span class="label-text text-base-content">Starting URL</span>
+        </label>
+        <input
+          type="url"
+          placeholder="https://example.com"
+          class="input input-bordered w-full bg-base-200 text-base-content placeholder-gray-500 border-base-300 focus:border-primary"
+          bind:value={newProjectUrl}
+        />
+        <label class="label">
+          <span class="label-text-alt text-base-content opacity-70">This URL will be used as the default starting point for all crawls</span>
+        </label>
+      </div>
+
       <div class="modal-action">
         <button
           class="btn btn-ghost text-base-content hover:bg-base-200"
@@ -100,7 +126,7 @@
         <button
           class="btn btn-primary text-primary-content"
           on:click={handleCreateProject}
-          disabled={creating || !newProjectName || !newProjectDomain}
+          disabled={creating || !newProjectName || !newProjectDomain || !newProjectUrl}
         >
           {#if creating}
             <span class="loading loading-spinner loading-sm"></span>

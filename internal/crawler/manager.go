@@ -15,22 +15,26 @@ import (
 	"github.com/dillonlara115/barracuda/pkg/models"
 )
 
+// ProgressCallback is called when a page is crawled to allow real-time updates
+type ProgressCallback func(page *models.PageResult, totalPages int)
+
 // Manager orchestrates the crawling process
 type Manager struct {
-	config        *utils.Config
-	fetcher       *Fetcher
-	robotsChecker *RobotsChecker
-	sitemapParser *SitemapParser
-	linkGraph     *graph.Graph
-	visited       sync.Map // map[string]bool for visited URLs
-	queue         chan crawlTask
-	results       []*models.PageResult
-	resultsMu     sync.Mutex
-	wg            sync.WaitGroup
-	ctx           context.Context
-	cancel        context.CancelFunc
-	pending       int32 // Track pending tasks (atomic)
-	queueClosed   int32 // Atomic flag to track if queue is closed
+	config           *utils.Config
+	fetcher          *Fetcher
+	robotsChecker    *RobotsChecker
+	sitemapParser    *SitemapParser
+	linkGraph        *graph.Graph
+	visited          sync.Map // map[string]bool for visited URLs
+	queue            chan crawlTask
+	results          []*models.PageResult
+	resultsMu        sync.Mutex
+	wg               sync.WaitGroup
+	ctx              context.Context
+	cancel           context.CancelFunc
+	pending          int32 // Track pending tasks (atomic)
+	queueClosed      int32 // Atomic flag to track if queue is closed
+	progressCallback ProgressCallback // Optional callback for progress updates
 }
 
 // crawlTask represents a URL to be crawled with its depth
@@ -65,6 +69,11 @@ func NewManager(config *utils.Config) *Manager {
 	go manager.handleSignals()
 
 	return manager
+}
+
+// SetProgressCallback sets a callback function that will be called when each page is crawled
+func (m *Manager) SetProgressCallback(callback ProgressCallback) {
+	m.progressCallback = callback
 }
 
 // Crawl starts the crawling process
@@ -221,6 +230,11 @@ func (m *Manager) worker(id int) {
 				utils.NewField("depth", task.Depth),
 				utils.NewField("total", resultCount),
 			)
+
+			// Call progress callback if set (for real-time updates)
+			if m.progressCallback != nil {
+				m.progressCallback(result.PageResult, resultCount)
+			}
 
 			// Check if we've reached max pages after storing
 			if resultCount >= m.config.MaxPages {
