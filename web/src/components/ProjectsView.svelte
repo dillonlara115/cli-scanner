@@ -63,16 +63,18 @@
   <div class="flex-none gap-2">
     <Auth />
     <div class="dropdown dropdown-end">
-      <label tabindex="0" class="btn btn-ghost">
+      <button type="button" tabindex="0" class="btn btn-ghost">
         {selectedProject ? selectedProject.name : 'Select Project'}
         <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
         </svg>
-      </label>
-      <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-64 p-2 shadow-lg">
+      </button>
+      <ul tabindex="0" role="menu" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-64 p-2 shadow-lg">
         {#each projects as project}
           <li>
-            <a
+            <button
+              type="button"
+              role="menuitem"
               class:active={selectedProject?.id === project.id}
               on:click={() => selectProject(project)}
             >
@@ -80,13 +82,13 @@
                 <div class="font-semibold">{project.name}</div>
                 <div class="text-sm opacity-70">{project.domain}</div>
               </div>
-            </a>
+            </button>
           </li>
         {/each}
         <li>
-          <a on:click={() => showCreateModal = true}>
+          <button type="button" role="menuitem" on:click={() => showCreateModal = true}>
             <span>+ Create New Project</span>
-          </a>
+          </button>
         </li>
       </ul>
     </div>
@@ -106,10 +108,11 @@
       {/if}
 
       <div class="form-control w-full mb-4">
-        <label class="label">
+        <label class="label" for="project-name">
           <span class="label-text">Project Name</span>
         </label>
         <input
+          id="project-name"
           type="text"
           placeholder="My Website"
           class="input input-bordered w-full"
@@ -118,10 +121,11 @@
       </div>
 
       <div class="form-control w-full mb-4">
-        <label class="label">
+        <label class="label" for="project-domain">
           <span class="label-text">Domain</span>
         </label>
         <input
+          id="project-domain"
           type="text"
           placeholder="example.com"
           class="input input-bordered w-full"
