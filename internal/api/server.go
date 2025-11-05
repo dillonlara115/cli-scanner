@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/dillonlara115/barracuda/internal/gsc"
 	"github.com/supabase-community/supabase-go"
 	"go.uber.org/zap"
 )
@@ -55,6 +57,25 @@ func (s *Server) Router() http.Handler {
 
 	// Health check (no auth required)
 	mux.HandleFunc("/health", s.handleHealth)
+
+	// Initialize GSC OAuth (non-blocking - will fail gracefully if credentials not set)
+	// Use the API port for redirect URL
+	apiPort := os.Getenv("PORT")
+	if apiPort == "" {
+		apiPort = "8080"
+	}
+	gscRedirectURL := fmt.Sprintf("http://localhost:%s/api/gsc/callback", apiPort)
+	if err := gsc.InitializeOAuth(gscRedirectURL); err != nil {
+		s.logger.Warn("GSC integration disabled", zap.Error(err))
+		s.logger.Info("Set GSC_CLIENT_ID, GSC_CLIENT_SECRET, or GSC_CREDENTIALS_JSON to enable")
+	}
+
+	// GSC OAuth endpoints (no auth required - OAuth handles its own security)
+	mux.HandleFunc("/api/gsc/connect", s.handleGSCConnect)
+	mux.HandleFunc("/api/gsc/callback", s.handleGSCCallback)
+	mux.HandleFunc("/api/gsc/properties", s.handleGSCProperties)
+	mux.HandleFunc("/api/gsc/performance", s.handleGSCPerformance)
+	mux.HandleFunc("/api/gsc/enrich-issues", s.handleGSCEnrichIssues)
 
 	// API v1 routes
 	v1 := http.NewServeMux()

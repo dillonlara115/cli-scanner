@@ -176,6 +176,41 @@ export async function triggerCrawl(projectId, crawlConfig) {
   }
 }
 
+// Update project settings
+export async function updateProjectSettings(projectId, settings) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    // Get current project to merge settings
+    const { data: project, error: fetchError } = await supabase
+      .from('projects')
+      .select('settings')
+      .eq('id', projectId)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    // Merge with existing settings
+    const updatedSettings = {
+      ...(project.settings || {}),
+      ...settings
+    };
+
+    const { data, error } = await supabase
+      .from('projects')
+      .update({ settings: updatedSettings })
+      .eq('id', projectId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return { data, error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
+}
+
 // Update issue status
 export async function updateIssueStatus(issueId, status, notes = null) {
   try {

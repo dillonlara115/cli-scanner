@@ -1,6 +1,8 @@
 <script>
   import { signIn, signUp, signOut } from '../lib/auth.js';
   import { user } from '../lib/auth.js';
+  import { link, push } from 'svelte-spa-router';
+  import { Plug } from 'lucide-svelte';
   import Logo from './Logo.svelte';
 
   let isSignUp = false;
@@ -54,19 +56,25 @@
 
 {#if isAuthenticated}
   <div class="dropdown dropdown-end">
-    <label tabindex="0" class="btn btn-ghost">
+    <button type="button" tabindex="0" class="btn btn-ghost">
       <div class="avatar placeholder">
         <div class="bg-neutral text-neutral-content rounded-full w-8">
           <span class="text-xs">{$user?.email?.charAt(0).toUpperCase() || 'U'}</span>
         </div>
       </div>
       <span class="ml-2">{$user?.email || 'User'}</span>
-    </label>
-    <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow">
+    </button>
+    <ul tabindex="0" role="menu" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow">
       <li>
-        <a on:click={handleSignOut} class="text-error">
-          Sign Out
+        <a href="/integrations" use:link role="menuitem">
+          <Plug class="w-5 h-5" />
+          Integrations
         </a>
+      </li>
+      <li>
+        <button type="button" role="menuitem" on:click={handleSignOut} class="text-error w-full text-left">
+          Sign Out
+        </button>
       </li>
     </ul>
   </div>
@@ -217,9 +225,9 @@
         {#if isSignUp}
           <p class="text-sm text-gray-500 mt-6 text-center">
             By creating an account, I agree with Barracuda's 
-            <a href="#" class="text-[#FF6B6B] hover:underline">Privacy Policy</a> 
+            <button type="button" class="text-[#FF6B6B] hover:underline bg-transparent border-none p-0 cursor-pointer">Privacy Policy</button> 
             and 
-            <a href="#" class="text-[#FF6B6B] hover:underline">Terms of Service</a>.
+            <button type="button" class="text-[#FF6B6B] hover:underline bg-transparent border-none p-0 cursor-pointer">Terms of Service</button>.
           </p>
         {/if}
       </div>

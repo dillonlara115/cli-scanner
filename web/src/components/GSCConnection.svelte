@@ -1,10 +1,11 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onMount } from 'svelte';
   
   const dispatch = createEventDispatcher();
   
   export let summary = null;
   export let navigateToTab = null;
+  export let project = null; // Project object with settings
 
   let isConnecting = false;
   let isConnected = false;
@@ -13,7 +14,17 @@
   let isLoadingProperties = false;
   let error = null;
 
-  // Check if already connected
+  // Get API base URL (same pattern as other API calls)
+  const getApiUrl = () => {
+    return import.meta.env.VITE_CLOUD_RUN_API_URL || 'http://localhost:8080';
+  };
+
+  // Check if already connected on mount
+  onMount(() => {
+    checkConnection();
+  });
+
+  // Also check when summary changes (for backward compatibility)
   $: if (summary) {
     checkConnection();
   }
@@ -29,7 +40,10 @@
 
       // Try to get user ID from session storage
       const userID = sessionStorage.getItem('gsc_user_id');
-      const url = userID ? `/api/gsc/properties?user_id=${encodeURIComponent(userID)}` : '/api/gsc/properties';
+      const apiUrl = getApiUrl();
+      const url = userID 
+        ? `${apiUrl}/api/gsc/properties?user_id=${encodeURIComponent(userID)}` 
+        : `${apiUrl}/api/gsc/properties`;
       
       const response = await fetch(url);
       if (response.ok) {
@@ -67,9 +81,31 @@
     error = null;
     
     try {
-      const response = await fetch('/api/gsc/connect');
+      // Skip GSC API calls in production (Vercel) - these endpoints don't exist there
+      if (import.meta.env.PROD || window.location.hostname !== 'localhost') {
+        error = 'GSC integration is only available when running the local API server (barracuda serve)';
+        isConnecting = false;
+        return;
+      }
+
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/gsc/connect`);
       if (!response.ok) {
-        throw new Error('Failed to get auth URL');
+        // Try to get error message from response
+        let errorMessage = 'Failed to get auth URL';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (parseErr) {
+          // If response isn't JSON, try text
+          try {
+            const text = await response.text();
+            if (text) errorMessage = text;
+          } catch (textErr) {
+            // Use default message
+          }
+        }
+        throw new Error(errorMessage);
       }
       
       const data = await response.json();
@@ -147,7 +183,10 @@
       }
 
       const userID = sessionStorage.getItem('gsc_user_id');
-      const url = userID ? `/api/gsc/properties?user_id=${encodeURIComponent(userID)}` : '/api/gsc/properties';
+      const apiUrl = getApiUrl();
+      const url = userID 
+        ? `${apiUrl}/api/gsc/properties?user_id=${encodeURIComponent(userID)}` 
+        : `${apiUrl}/api/gsc/properties`;
       
       const response = await fetch(url);
       if (!response.ok) {
@@ -181,8 +220,11 @@
   }
 
   async function enrichIssues() {
-    if (!selectedProperty) {
-      error = 'Please select a property first';
+    // Use project's saved property if available, otherwise use selectedProperty
+    const propertyToUse = project?.settings?.gsc_property_url || selectedProperty;
+    
+    if (!propertyToUse) {
+      error = 'Please select a property first, or save one in Project Settings';
       return;
     }
 
@@ -190,16 +232,21 @@
     
     try {
       const userID = sessionStorage.getItem('gsc_user_id');
+      const apiUrl = getApiUrl();
       
-      const response = await fetch('/api/gsc/enrich-issues', {
+      // Get issues from summary
+      const issues = summary?.issues || [];
+      
+      const response = await fetch(`${apiUrl}/api/gsc/enrich-issues`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           user_id: userID || undefined,
-          site_url: selectedProperty,
+          site_url: propertyToUse,
           days: 30,
+          issues: issues,
         }),
       });
 

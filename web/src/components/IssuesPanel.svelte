@@ -164,6 +164,13 @@
       label: type.replace(/_/g, ' ')
     }))
   ];
+
+  const groupByOptions = [
+    { value: 'none', label: 'No Grouping' },
+    { value: 'url', label: 'Group by URL' },
+    { value: 'type', label: 'Group by Type' },
+    { value: 'severity', label: 'Group by Severity' }
+  ];
   
   const getSeverityColor = (severity) => {
     switch (severity) {
@@ -259,71 +266,141 @@
   };
 </script>
 
+<style>
+  /* Responsive grid for the filters at different breakpoints */
+  .filter-group-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  @media (min-width: 768px) {
+    .filter-group-wrap {
+      flex-direction: row;
+      align-items: flex-start;
+    }
+  }
+  .scrolling-inline-form {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 0.5rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--fallback-bc, #d1d5db) transparent;
+  }
+  .scrolling-inline-form::-webkit-scrollbar {
+    height: 6px;
+    background: transparent;
+  }
+  .scrolling-inline-form::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+  }
+  .scrolling-inline-form .btn {
+    min-width: 64px;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    font-size: 0.85rem;
+  }
+  .search-sort-bar {
+    display: flex;
+    flex-direction: row;
+    gap: 0.5rem;
+    width: 100%;
+  }
+  @media (max-width: 767px) {
+    .search-sort-bar {
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+  }
+  .longer-search {
+    flex: 1 1 0%;
+    min-width: 0;
+  }
+  .sort-dropdown-sm {
+    flex: 0 0 auto;
+    width: 150px;
+    min-width: 110px;
+    max-width: 180px;
+  }
+</style>
+
 <div class="card bg-base-100 shadow">
   <div class="card-body">
     <h2 class="card-title mb-4">SEO Issues</h2>
 
     <div class="flex flex-col gap-4 mb-4">
-      <!-- Search and grouping controls -->
-      <div class="flex flex-col md:flex-row gap-4">
+      <!-- Search and grouping controls (search longer, sort smaller, both in row on desktop)-->
+      <div class="search-sort-bar">
         <input
           type="text"
           placeholder="Search by URL, message, or recommendation..."
-          class="input input-bordered flex-1"
+          class="input input-bordered longer-search"
           bind:value={searchTerm}
         />
-        <div class="flex flex-col gap-4 w-full">
-          <div class="flex flex-wrap gap-2">
-            <select class="select select-bordered" bind:value={groupBy}>
-              <option value="none">No Grouping</option>
-              <option value="url">Group by URL</option>
-              <option value="type">Group by Type</option>
-              <option value="severity">Group by Severity</option>
-            </select>
-            <select class="select select-bordered" bind:value={sortBy}>
-              <option value="none">Sort by...</option>
-              <option value="priority">Sort by Priority</option>
-            </select>
-          </div>
 
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
-            <div class="space-y-2">
-              <div class="text-xs font-semibold uppercase tracking-wide text-base-content/70">Severity</div>
-              <form class="filter filter-sm flex gap-2">
-                {#each severityOptions as option}
-                  <input
-                    class="btn"
-                    type="radio"
-                    name="severity-filter"
-                    value={option.value}
-                    aria-label={option.label}
-                    data-title={option.label}
-                    bind:group={severityFilter}
-                  />
-                {/each}
-              </form>
-            </div>
+        <select class="select select-bordered sort-dropdown-sm" bind:value={sortBy}>
+          <option value="none">Sort by...</option>
+          <option value="priority">Sort by Priority</option>
+        </select>
+      </div>
 
-            <div class="space-y-2">
-              <div class="text-xs font-semibold uppercase tracking-wide text-base-content/70">Type</div>
-              <form class="filter filter-sm flex gap-2">
-                {#each typeFilterOptions as option}
-                  <input
-                    class="btn"
-                    type="radio"
-                    name="type-filter"
-                    value={option.value}
-                    aria-label={option.label}
-                    data-title={option.label}
-                    bind:group={typeFilter}
-                  />
-                {/each}
-              </form>
-            </div>
-          </div>
+      <!-- Responsive filters: stack on mobile, row on large -->
+      <div class="filter-group-wrap">
+        <div class="space-y-2 w-full">
+          <div class="text-xs font-semibold uppercase tracking-wide text-base-content/70">Severity</div>
+          <!-- Horizontally scrolling form for overflow, especially on mobile -->
+          <form class="filter filter-sm scrolling-inline-form" autocomplete="off">
+            {#each severityOptions as option}
+              <input
+                class="btn"
+                type="radio"
+                name="severity-filter"
+                value={option.value}
+                aria-label={option.label}
+                data-title={option.label}
+                bind:group={severityFilter}
+              />
+            {/each}
+          </form>
+        </div>
+        <div class="space-y-2 w-full">
+          <div class="text-xs font-semibold uppercase tracking-wide text-base-content/70">Type</div>
+          <form class="filter filter-sm scrolling-inline-form" autocomplete="off">
+            {#each typeFilterOptions as option}
+              <input
+                class="btn"
+                type="radio"
+                name="type-filter"
+                value={option.value}
+                aria-label={option.label}
+                data-title={option.label}
+                bind:group={typeFilter}
+              />
+            {/each}
+          </form>
         </div>
       </div>
       
+      <!-- Group By filter on separate line -->
+      <div class="space-y-2 w-full">
+        <div class="text-xs font-semibold uppercase tracking-wide text-base-content/70">Group By</div>
+        <form class="filter filter-sm scrolling-inline-form" autocomplete="off">
+          {#each groupByOptions as option}
+            <input
+              class="btn"
+              type="radio"
+              name="group-by-filter"
+              value={option.value}
+              aria-label={option.label}
+              data-title={option.label}
+              bind:group={groupBy}
+            />
+          {/each}
+        </form>
+      </div>
       <!-- Export button -->
       <div class="flex justify-end">
         <details class="dropdown dropdown-end">

@@ -166,6 +166,6 @@
     </div>
   </div>
   
-  <Dashboard {summary} {results} initialTab={tab} projectId={projectId} crawlId={crawlId} />
+  <Dashboard {summary} {results} initialTab={tab} projectId={projectId} crawlId={crawlId} project={project} />
 {/if}
 

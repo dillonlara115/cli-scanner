@@ -11,6 +11,7 @@ import (
 
 	"github.com/dillonlara115/barracuda/internal/analyzer"
 	"github.com/dillonlara115/barracuda/internal/crawler"
+	"github.com/dillonlara115/barracuda/internal/gsc"
 	"github.com/dillonlara115/barracuda/internal/utils"
 	"github.com/dillonlara115/barracuda/pkg/models"
 	"github.com/google/uuid"
@@ -840,5 +841,224 @@ func (s *Server) verifyProjectAccess(userID, projectID string) (bool, error) {
 
 	s.logger.Debug("Access denied", zap.String("user_id", userID), zap.String("project_id", projectID))
 	return false, nil
+}
+
+// handleGSCConnect handles GET /api/gsc/connect - Get OAuth authorization URL
+func (s *Server) handleGSCConnect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	authURL, state, err := gsc.GenerateAuthURL()
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to generate auth URL: %v", err))
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, map[string]string{
+		"auth_url": authURL,
+		"state":    state,
+	})
+}
+
+// handleGSCCallback handles GET /api/gsc/callback - OAuth callback
+func (s *Server) handleGSCCallback(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	state := r.URL.Query().Get("state")
+
+	if !gsc.ValidateState(state) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, `
+			<!DOCTYPE html>
+			<html>
+			<head><title>GSC Connection Error</title></head>
+			<body>
+				<h1>Connection Failed</h1>
+				<p>Invalid state</p>
+				<script>
+					window.opener && window.opener.postMessage({type: 'gsc_error', error: 'Invalid state'}, '*');
+					setTimeout(() => window.close(), 2000);
+				</script>
+			</body>
+			</html>
+		`)
+		return
+	}
+
+	token, err := gsc.ExchangeCode(code)
+	if err != nil {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, `
+			<!DOCTYPE html>
+			<html>
+			<head><title>GSC Connection Error</title></head>
+			<body>
+				<h1>Connection Failed</h1>
+				<p>%v</p>
+				<script>
+					window.opener && window.opener.postMessage({type: 'gsc_error', error: '%v'}, '*');
+					setTimeout(() => window.close(), 2000);
+				</script>
+			</body>
+			</html>
+		`, err, err)
+		return
+	}
+
+	// Store token (use RemoteAddr as userID for now)
+	userID := r.RemoteAddr
+	gsc.StoreToken(userID, token)
+
+	// Return success page that closes popup and signals parent window
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `
+		<!DOCTYPE html>
+		<html>
+		<head>
+			<title>GSC Connected</title>
+			<style>
+				body {
+					font-family: Arial, sans-serif;
+					display: flex;
+					justify-content: center;
+					align-items: center;
+					height: 100vh;
+					margin: 0;
+					background: #f5f5f5;
+				}
+				.container {
+					text-align: center;
+					background: white;
+					padding: 2rem;
+					border-radius: 8px;
+					box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+				}
+				.success { color: #10b981; font-size: 3rem; }
+				h1 { color: #1f2937; }
+				p { color: #6b7280; }
+			</style>
+		</head>
+		<body>
+			<div class="container">
+				<div class="success">✓</div>
+				<h1>Successfully Connected!</h1>
+				<p>This window will close automatically...</p>
+			</div>
+			<script>
+				// Signal parent window that connection succeeded
+				if (window.opener) {
+					window.opener.postMessage({type: 'gsc_connected', user_id: '%s'}, '*');
+				}
+				// Close popup after short delay
+				setTimeout(() => {
+					window.close();
+				}, 1500);
+			</script>
+		</body>
+		</html>
+	`, userID)
+}
+
+// handleGSCProperties handles GET /api/gsc/properties - List GSC properties
+func (s *Server) handleGSCProperties(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// Get userID from query or use default
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		userID = r.RemoteAddr
+	}
+
+	properties, err := gsc.GetProperties(userID)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get properties: %v", err))
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, properties)
+}
+
+// handleGSCPerformance handles POST /api/gsc/performance - Fetch performance data
+func (s *Server) handleGSCPerformance(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		UserID  string `json:"user_id"`
+		SiteURL string `json:"site_url"`
+		Days    int    `json:"days"` // Number of days to fetch (default 30)
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request: %v", err))
+		return
+	}
+
+	if req.UserID == "" {
+		req.UserID = r.RemoteAddr
+	}
+	if req.Days == 0 {
+		req.Days = 30
+	}
+
+	endDate := time.Now()
+	startDate := endDate.AddDate(0, 0, -req.Days)
+
+	performanceMap, err := gsc.FetchPerformanceData(req.UserID, req.SiteURL, startDate, endDate)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to fetch performance data: %v", err))
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, performanceMap)
+}
+
+// handleGSCEnrichIssues handles POST /api/gsc/enrich-issues - Enrich issues with GSC data
+func (s *Server) handleGSCEnrichIssues(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		UserID  string            `json:"user_id"`
+		SiteURL string            `json:"site_url"`
+		Days    int               `json:"days"`
+		Issues  []analyzer.Issue  `json:"issues"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request: %v", err))
+		return
+	}
+
+	if req.UserID == "" {
+		req.UserID = r.RemoteAddr
+	}
+	if req.Days == 0 {
+		req.Days = 30
+	}
+
+	// Fetch performance data
+	endDate := time.Now()
+	startDate := endDate.AddDate(0, 0, -req.Days)
+	performanceMap, err := gsc.FetchPerformanceData(req.UserID, req.SiteURL, startDate, endDate)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to fetch performance data: %v", err))
+		return
+	}
+
+	// Enrich issues
+	enrichedIssues := gsc.EnrichIssues(req.Issues, performanceMap)
+	s.respondJSON(w, http.StatusOK, enrichedIssues)
 }
 

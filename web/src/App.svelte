@@ -8,6 +8,8 @@
   import ProjectsList from './routes/ProjectsList.svelte';
   import ProjectView from './routes/ProjectView.svelte';
   import CrawlView from './routes/CrawlView.svelte';
+  import Integrations from './routes/Integrations.svelte';
+  import Settings from './routes/Settings.svelte';
 
   let loading = true;
   let configError = null;
@@ -17,6 +19,8 @@
     '/': ProjectsList,
     '/project/:id': ProjectView,
     '/project/:projectId/crawl/:crawlId': CrawlView,
+    '/project/:projectId/settings': Settings,
+    '/integrations': Integrations,
   };
 
   // Check Supabase configuration
