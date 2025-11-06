@@ -1,0 +1,45 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/forms';
+@plugin '@tailwindcss/typography';
+
+/* Import fonts */
+@import '@fontsource/sora/700.css';
+@import '@fontsource/dm-sans/400.css';
+@import '@fontsource/dm-sans/500.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+
+/* Tailwind v4 Theme Configuration */
+@theme {
+	--font-heading: 'Sora', sans-serif;
+	--font-body: 'DM Sans', sans-serif;
+	--font-mono: 'JetBrains Mono', monospace;
+
+	--color-primary: #FF6B6B;
+	--color-primary-focus: #FF5252;
+	--color-neutral: #282828;
+	--color-base-100: #282828;
+	--color-base-content: #FFFFFF;
+	--color-info: #3B82F6;
+	--color-success: #15803D;
+	--color-warning: #F59E0B;
+	--color-error: #B91C1C;
+}
+
+/* Base styles */
+:root {
+	font-family: var(--font-body);
+}
+
+body {
+	background-color: var(--color-base-100);
+	color: var(--color-base-content);
+}
+
+h1, h2, h3, h4, h5, h6 {
+	font-family: var(--font-heading);
+}
+
+code {
+	font-family: var(--font-mono);
+}
