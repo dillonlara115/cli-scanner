@@ -93,6 +93,7 @@ func (s *Server) Router() http.Handler {
 	// API v1 routes
 	v1 := http.NewServeMux()
 	v1.HandleFunc("/crawls", s.handleCrawls)
+	v1.HandleFunc("/crawls/", s.handleCrawlByID)
 	v1.HandleFunc("/projects", s.handleProjects)
 	v1.HandleFunc("/projects/", s.handleProjectByID)
 	v1.HandleFunc("/exports", s.handleExports)
