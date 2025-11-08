@@ -310,6 +310,6 @@
       <RecommendationsPanel issues={displayIssues} {navigateToTab} enrichedIssues={enrichedIssuesMap} />
     </div>
   {:else if activeTab === 'graph'}
-    <LinkGraph />
+    <LinkGraph crawlId={crawlId} />
   {/if}
 </div>

@@ -974,3 +974,174 @@ func (s *Server) handleGSCCallback(w http.ResponseWriter, r *http.Request) {
 		</html>
 	`, projectID)
 }
+
+// handleCrawlByID handles crawl-specific endpoints like /crawls/:id/graph
+func (s *Server) handleCrawlByID(w http.ResponseWriter, r *http.Request) {
+	userID, ok := userIDFromContext(r.Context())
+	if !ok {
+		s.respondError(w, http.StatusUnauthorized, "User not authenticated")
+		return
+	}
+
+	// Extract crawl ID from path: /crawls/:id/...
+	path := strings.TrimPrefix(r.URL.Path, "/crawls/")
+	path = strings.Trim(path, "/")
+	parts := strings.Split(path, "/")
+
+	if len(parts) == 0 || parts[0] == "" {
+		s.respondError(w, http.StatusBadRequest, "crawl_id is required")
+		return
+	}
+
+	crawlID := parts[0]
+
+	// Verify user has access to this crawl (via project membership)
+	hasAccess, err := s.verifyCrawlAccess(userID, crawlID)
+	if err != nil {
+		s.logger.Error("Failed to verify crawl access", zap.Error(err))
+		s.respondError(w, http.StatusInternalServerError, "Failed to verify crawl access")
+		return
+	}
+	if !hasAccess {
+		s.respondError(w, http.StatusForbidden, "You don't have access to this crawl")
+		return
+	}
+
+	// Handle sub-resources
+	if len(parts) > 1 {
+		resource := parts[1]
+		switch resource {
+		case "graph":
+			if r.Method == http.MethodGet {
+				s.handleCrawlGraph(w, r, crawlID)
+			} else {
+				s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+			}
+			return
+		default:
+			s.respondError(w, http.StatusNotFound, fmt.Sprintf("Resource not found: %s", resource))
+			return
+		}
+	}
+
+	// Handle main crawl operations
+	switch r.Method {
+	case http.MethodGet:
+		s.handleGetCrawl(w, r, crawlID)
+	default:
+		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+	}
+}
+
+// handleGetCrawl handles GET /api/v1/crawls/:id
+func (s *Server) handleGetCrawl(w http.ResponseWriter, r *http.Request, crawlID string) {
+	var crawls []map[string]interface{}
+	data, _, err := s.supabase.From("crawls").Select("*", "", false).Eq("id", crawlID).Execute()
+	if err != nil {
+		s.logger.Error("Failed to get crawl", zap.Error(err))
+		s.respondError(w, http.StatusInternalServerError, "Failed to get crawl")
+		return
+	}
+
+	if err := json.Unmarshal(data, &crawls); err != nil {
+		s.logger.Error("Failed to parse crawl data", zap.Error(err))
+		s.respondError(w, http.StatusInternalServerError, "Failed to parse crawl")
+		return
+	}
+
+	if len(crawls) == 0 {
+		s.respondError(w, http.StatusNotFound, "Crawl not found")
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, crawls[0])
+}
+
+// handleCrawlGraph handles GET /api/v1/crawls/:id/graph - returns link graph data
+func (s *Server) handleCrawlGraph(w http.ResponseWriter, r *http.Request, crawlID string) {
+	// Fetch all pages for this crawl
+	var pages []map[string]interface{}
+	data, _, err := s.supabase.From("pages").Select("url,data", "", false).Eq("crawl_id", crawlID).Execute()
+	if err != nil {
+		s.logger.Error("Failed to fetch pages for graph", zap.Error(err))
+		s.respondError(w, http.StatusInternalServerError, "Failed to fetch pages")
+		return
+	}
+
+	if err := json.Unmarshal(data, &pages); err != nil {
+		s.logger.Error("Failed to parse pages data", zap.Error(err))
+		s.respondError(w, http.StatusInternalServerError, "Failed to parse pages")
+		return
+	}
+
+	// Build graph structure: map[sourceURL][]targetURL
+	graph := make(map[string][]string)
+
+	for _, page := range pages {
+		url, ok := page["url"].(string)
+		if !ok {
+			continue
+		}
+
+		dataField, ok := page["data"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Extract internal and external links
+		var allLinks []string
+
+		if internalLinks, ok := dataField["internal_links"].([]interface{}); ok {
+			for _, link := range internalLinks {
+				if linkStr, ok := link.(string); ok {
+					allLinks = append(allLinks, linkStr)
+				}
+			}
+		}
+
+		if externalLinks, ok := dataField["external_links"].([]interface{}); ok {
+			for _, link := range externalLinks {
+				if linkStr, ok := link.(string); ok {
+					allLinks = append(allLinks, linkStr)
+				}
+			}
+		}
+
+		if len(allLinks) > 0 {
+			// Convert to []string
+			links := make([]string, len(allLinks))
+			for i, link := range allLinks {
+				links[i] = link
+			}
+			graph[url] = links
+		}
+	}
+
+	s.respondJSON(w, http.StatusOK, graph)
+}
+
+// verifyCrawlAccess checks if user has access to a crawl (via project membership)
+func (s *Server) verifyCrawlAccess(userID, crawlID string) (bool, error) {
+	// Get the crawl's project_id
+	var crawls []map[string]interface{}
+	data, _, err := s.serviceRole.From("crawls").Select("project_id", "", false).Eq("id", crawlID).Execute()
+	if err != nil {
+		return false, err
+	}
+
+	if err := json.Unmarshal(data, &crawls); err != nil {
+		return false, err
+	}
+
+	if len(crawls) == 0 {
+		return false, nil
+	}
+
+	projectID, ok := crawls[0]["project_id"].(string)
+	if !ok {
+		return false, nil
+	}
+
+	// Verify user has access to the project
+	return s.verifyProjectAccess(userID, projectID)
+}

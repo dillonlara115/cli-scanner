@@ -1,7 +1,9 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import { fetchCrawl, fetchCrawlPageCount } from '../lib/data.js';
   import { push } from 'svelte-spa-router';
+  
+  const dispatch = createEventDispatcher();
   
   export let crawlId = null;
   export let projectId = null;

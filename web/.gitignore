@@ -4,3 +4,4 @@ web/dist
 web/.DS_Store
 web/*.log
 .vercel
+node_modules

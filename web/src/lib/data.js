@@ -344,3 +344,9 @@ export async function fetchProjectGSCDimensions(projectId, type, params = {}) {
 
   return authorizedJSON(`/api/v1/projects/${projectId}/gsc/dimensions?${searchParams.toString()}`);
 }
+
+// Fetch link graph for a crawl
+export async function fetchCrawlGraph(crawlId) {
+  if (!crawlId) return { data: null, error: new Error('crawlId is required') };
+  return authorizedJSON(`/api/v1/crawls/${crawlId}/graph`);
+}
