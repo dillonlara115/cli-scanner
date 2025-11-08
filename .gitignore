@@ -27,6 +27,7 @@ Thumbs.db
 
 # Frontend build output
 web/dist/
+web/node_modules/
 
 # Environment variables - NEVER commit these!
 .env
