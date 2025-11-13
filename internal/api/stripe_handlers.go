@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/stripe/stripe-go/v78"
@@ -59,6 +60,46 @@ type CreateCheckoutSessionRequest struct {
 type CreateCheckoutSessionResponse struct {
 	SessionID string `json:"session_id"`
 	URL       string `json:"url"`
+}
+
+type BillingSummaryResponse struct {
+	Profile      map[string]interface{} `json:"profile"`
+	Subscription map[string]interface{} `json:"subscription"`
+}
+
+// handleBillingSummary returns the authenticated user's profile and subscription info
+func (s *Server) handleBillingSummary(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	userID, ok := userIDFromContext(r.Context())
+	if !ok || userID == "" {
+		s.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	authHeader := r.Header.Get("Authorization")
+
+	profile, err := s.ensureProfileExists(userID, authHeader)
+	if err != nil {
+		s.logger.Error("Failed to ensure profile", zap.Error(err))
+		s.respondError(w, http.StatusInternalServerError, "Failed to load profile")
+		return
+	}
+
+	subscription, err := s.fetchLatestSubscription(userID)
+	if err != nil {
+		s.logger.Error("Failed to load subscription", zap.Error(err))
+		s.respondError(w, http.StatusInternalServerError, "Failed to load subscription")
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, BillingSummaryResponse{
+		Profile:      profile,
+		Subscription: subscription,
+	})
 }
 
 // handleCreateCheckoutSession creates a Stripe checkout session
@@ -528,8 +569,32 @@ func (s *Server) handleCreateBillingPortalSession(w http.ResponseWriter, r *http
 	
 	customerID, ok := profiles[0]["stripe_customer_id"].(string)
 	if !ok || customerID == "" {
-		s.respondError(w, http.StatusBadRequest, "No active subscription found")
-		return
+		// Attempt to fall back to latest subscription
+		subscription, subErr := s.fetchLatestSubscription(userID)
+		if subErr != nil {
+			s.logger.Error("Failed to load subscription for portal session", zap.Error(subErr))
+			s.respondError(w, http.StatusInternalServerError, "Failed to load subscription")
+			return
+		}
+
+		if subscription != nil {
+			if val, ok := subscription["stripe_customer_id"].(string); ok && val != "" {
+				customerID = val
+				// Persist the customer ID on the profile for next time
+				_, _, updateErr := s.serviceRole.From("profiles").
+					Update(map[string]interface{}{"stripe_customer_id": customerID}, "", "").
+					Eq("id", userID).
+					Execute()
+				if updateErr != nil {
+					s.logger.Warn("Failed to backfill stripe_customer_id on profile", zap.Error(updateErr))
+				}
+			}
+		}
+
+		if customerID == "" {
+			s.respondError(w, http.StatusBadRequest, "No active subscription found")
+			return
+		}
 	}
 
 	stripeConfig := GetStripeConfig()
@@ -557,6 +622,94 @@ func (s *Server) handleCreateBillingPortalSession(w http.ResponseWriter, r *http
 }
 
 // Helper functions
+
+func (s *Server) fetchProfile(userID string) (map[string]interface{}, error) {
+	var profiles []map[string]interface{}
+	data, _, err := s.serviceRole.From("profiles").
+		Select("id, display_name, subscription_tier, subscription_status, stripe_customer_id, stripe_subscription_id, team_size, subscription_current_period_end, subscription_cancel_at_period_end", "", false).
+		Eq("id", userID).
+		Limit(1, "").
+		Execute()
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query profiles: %w", err)
+	}
+
+	if err := json.Unmarshal(data, &profiles); err != nil {
+		return nil, fmt.Errorf("failed to parse profiles: %w", err)
+	}
+
+	if len(profiles) == 0 {
+		return nil, nil
+	}
+
+	return profiles[0], nil
+}
+
+func (s *Server) ensureProfileExists(userID, authHeader string) (map[string]interface{}, error) {
+	profile, err := s.fetchProfile(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if profile != nil {
+		return profile, nil
+	}
+
+	token := strings.TrimSpace(authHeader)
+	if strings.HasPrefix(strings.ToLower(token), "bearer ") && len(token) >= 7 {
+		token = strings.TrimSpace(token[7:])
+	}
+
+	displayName := "User"
+	if token != "" {
+		user, err := s.validateTokenViaAPI(token)
+		if err == nil && user != nil && user.Email != "" {
+			displayName = user.Email
+		}
+	}
+
+	defaultProfile := map[string]interface{}{
+		"id":                  userID,
+		"display_name":        displayName,
+		"subscription_tier":   "free",
+		"subscription_status": "active",
+		"team_size":           1,
+	}
+
+	_, _, err = s.serviceRole.From("profiles").
+		Insert(defaultProfile, false, "", "", "").
+		Execute()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create profile: %w", err)
+	}
+
+	return s.fetchProfile(userID)
+}
+
+func (s *Server) fetchLatestSubscription(userID string) (map[string]interface{}, error) {
+	var subscriptions []map[string]interface{}
+	data, _, err := s.serviceRole.From("subscriptions").
+		Select("*", "", false).
+		Eq("user_id", userID).
+		Order("updated_at", nil).
+		Limit(1, "").
+		Execute()
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query subscriptions: %w", err)
+	}
+
+	if err := json.Unmarshal(data, &subscriptions); err != nil {
+		return nil, fmt.Errorf("failed to parse subscriptions: %w", err)
+	}
+
+	if len(subscriptions) == 0 {
+		return nil, nil
+	}
+
+	return subscriptions[0], nil
+}
 
 func (s *Server) getUserIDByStripeCustomerID(customerID string) (string, error) {
 	var profiles []map[string]interface{}

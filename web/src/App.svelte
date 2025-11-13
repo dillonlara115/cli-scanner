@@ -88,6 +88,6 @@
     </div>
   {:else}
     <!-- Router handles all authenticated routes -->
-    <Router {routes} />
+    <Router {routes} useHash={false} />
   {/if}
 </div>

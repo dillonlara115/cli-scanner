@@ -230,7 +230,7 @@
                 Retry
               {/if}
             </button>
-            <a class="btn btn-sm btn-ghost" href="/integrations">Manage</a>
+            <a class="btn btn-sm btn-ghost" href="/integrations" use:link>Manage</a>
           </div>
         </div>
       {:else if gscProperty}
@@ -262,7 +262,7 @@
                 Refresh Data
               {/if}
             </button>
-            <a class="btn btn-sm btn-ghost" href="/integrations">Manage</a>
+            <a class="btn btn-sm btn-ghost" href="/integrations" use:link>Manage</a>
           </div>
         </div>
       {:else if gscLoading}
@@ -273,7 +273,7 @@
         <div class="alert alert-info">
           <span>
             Connect Google Search Console in
-            <a class="link link-primary" href="/integrations">Integrations</a>
+            <a class="link link-primary" href="/integrations" use:link>Integrations</a>
             to surface search performance metrics alongside crawl data.
           </span>
         </div>

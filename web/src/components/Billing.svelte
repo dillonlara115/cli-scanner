@@ -17,126 +17,109 @@
   const STRIPE_PRICE_ID_TEAM_SEAT = import.meta.env.VITE_STRIPE_PRICE_ID_TEAM_SEAT || '';
   
   let selectedBillingPeriod = 'monthly'; // 'monthly' or 'annual'
+  let hasLoaded = false; // Track if we've attempted to load
 
-  onMount(async () => {
-    await loadSubscriptionData();
+  // Load data when component mounts and user is available
+  onMount(() => {
+    // Subscribe to user store and load when user becomes available
+    const unsubscribe = user.subscribe(async (currentUser) => {
+      if (currentUser && !hasLoaded) {
+        hasLoaded = true;
+        await loadSubscriptionData();
+      } else if (!currentUser && !hasLoaded) {
+        // No user yet, but don't keep loading state forever
+        loading = false;
+      }
+    });
+    
+    return unsubscribe;
   });
 
+  async function getValidAccessToken() {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) {
+      throw new Error('Not authenticated. Please sign in again.');
+    }
+
+    let currentSession = sessionData.session;
+    if (!currentSession) {
+      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshed.session) {
+        throw new Error('Session expired. Please sign in again.');
+      }
+      currentSession = refreshed.session;
+    }
+
+    const expiresAt = currentSession?.expires_at;
+    if (expiresAt && expiresAt * 1000 < Date.now() + 60000) {
+      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshed.session) {
+        throw new Error('Session expired. Please sign in again.');
+      }
+      currentSession = refreshed.session;
+    }
+
+    const token = currentSession?.access_token;
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
+
+    return token;
+  }
+
   async function loadSubscriptionData() {
-    if (!$user) return;
+    if (!$user) {
+      loading = false;
+      return;
+    }
     
     loading = true;
     error = null;
     
     try {
-      // Ensure we have a valid session before querying (RLS requires auth.uid())
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !sessionData.session) {
-        console.warn('No active session, refreshing...');
-        const { error: refreshError } = await supabase.auth.refreshSession();
-        if (refreshError) {
-          throw new Error('Session expired. Please sign in again.');
-        }
-      }
-      
-      // Load profile with subscription info
-      // Note: Profile will be created automatically by the backend API if it doesn't exist
-      // Use limit(1) so zero-row responses stay as arrays and avoid PGRST116 errors
-      const { data: profileRows, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', $user.id)
-        .limit(1); // Avoid single-row coercion errors when no profile exists
-      
-      let profileData = profileRows?.[0] || null;
-      
-      // Handle profile error - PGRST116 means "no rows" which is OK
-      if (profileError) {
-        const profileErrCode = profileError.code;
-        const profileErrMessage = profileError.message || JSON.stringify(profileError);
-        const isProfilePGRST116 = profileErrCode === 'PGRST116' || 
-                                  profileErrMessage?.includes('PGRST116') || 
-                                  profileErrMessage?.includes('contains 0 rows');
-        
-        if (isProfilePGRST116) {
-          // No profile found - use defaults (this is OK)
-          profileData = null;
-        } else {
-          // Real error - throw it
-          throw profileError;
-        }
-      }
-      
-      // If profile doesn't exist, use defaults (backend will create it when needed)
-      profile = profileData || {
-        id: $user.id,
-        subscription_tier: 'free',
-        subscription_status: 'active',
-        team_size: 1
-      };
+      const token = await getValidAccessToken();
+      const response = await fetch(`${API_URL}/api/v1/billing/summary`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
 
-      // Load subscription - try multiple approaches
-      // First, try by user_id (most reliable since RLS policy checks user_id)
-      if (profile.id) {
-        // Query by user_id first - this matches the RLS policy
-        const { data: userSubRows, error: userSubError } = await supabase
-          .from('subscriptions')
-          .select('*')
-          .eq('user_id', profile.id)
-          .limit(1);
-        
-        const userSubData = userSubRows?.[0] || null;
-        
-        if (userSubError) {
-          if (userSubError.code === 'PGRST116') {
-            // No subscription found - this is OK
-            console.log('No subscription found for user_id:', profile.id);
-          } else {
-            console.warn('Subscription fetch by user_id error:', userSubError);
-          }
-        } else if (userSubData) {
-          subscription = userSubData;
-          // Update profile with subscription ID if it's missing
-          if (!profile.stripe_subscription_id && userSubData.stripe_subscription_id) {
-            profile.stripe_subscription_id = userSubData.stripe_subscription_id;
-          }
-        }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        const errorMessage = errorData?.error || `Failed to fetch billing summary (${response.status})`;
+        throw new Error(errorMessage);
       }
+
+      const data = await response.json();
+      console.log('Billing summary response:', data); // Debug log
       
-      // Fallback: try by stripe_subscription_id if we have it and didn't find by user_id
-      if (!subscription && profile.stripe_subscription_id) {
-        const { data: subRows, error: subError } = await supabase
-          .from('subscriptions')
-          .select('*')
-          .eq('stripe_subscription_id', profile.stripe_subscription_id)
-          .limit(1);
-        
-        const subData = subRows?.[0] || null;
-        
-        if (subError) {
-          if (subError.code !== 'PGRST116') {
-            console.warn('Subscription fetch by stripe_subscription_id error:', subError);
-          }
-        } else if (subData) {
-          subscription = subData;
-        }
-      }
-    } catch (err) {
-      // Only show error if it's not a "no rows" error (PGRST116)
-      // Check multiple possible error structures from Supabase
-      const errMessage = err.message || err.error?.message || JSON.stringify(err);
-      const errCode = err.code || err.error?.code;
-      const isPGRST116 = errCode === 'PGRST116' || errMessage?.includes('PGRST116') || errMessage?.includes('contains 0 rows');
-      
-      if (!isPGRST116) {
-        // Real error - show it
-        error = errMessage;
-        console.error('Failed to load subscription data:', err);
+      // Backend should always return a profile (it creates one if missing)
+      // But handle the case where it might be null/undefined
+      if (data?.profile) {
+        profile = data.profile;
       } else {
-        // PGRST116 is expected when no subscription exists yet - not an error
-        // Clear any previous error and just log
-        error = null;
-        console.log('No subscription data found yet (this is OK - webhook may still be processing)');
+        // Fallback: create a default profile object
+        profile = {
+          id: $user.id,
+          subscription_tier: 'free',
+          subscription_status: 'active',
+          team_size: 1
+        };
+      }
+      
+      subscription = data?.subscription || null;
+    } catch (err) {
+      error = err.message || 'Failed to load subscription data';
+      console.error('Failed to load subscription data:', err);
+      
+      // Set a default profile on error so the UI can still render
+      if ($user && !profile) {
+        profile = {
+          id: $user.id,
+          subscription_tier: 'free',
+          subscription_status: 'active',
+          team_size: 1
+        };
       }
     } finally {
       loading = false;
@@ -150,26 +133,7 @@
     error = null;
     
     try {
-      // Refresh session to ensure we have a valid token
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !sessionData.session) {
-        throw new Error('Not authenticated. Please sign in again.');
-      }
-      
-      // Check if token is expired or about to expire (within 60 seconds)
-      const expiresAt = sessionData.session.expires_at;
-      if (expiresAt && expiresAt * 1000 < Date.now() + 60000) {
-        // Refresh the session
-        const { error: refreshError } = await supabase.auth.refreshSession();
-        if (refreshError) {
-          throw new Error('Session expired. Please sign in again.');
-        }
-      }
-      
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) {
-        throw new Error('Not authenticated');
-      }
+      const token = await getValidAccessToken();
 
       const response = await fetch(`${API_URL}/api/v1/billing/checkout`, {
         method: 'POST',
@@ -207,10 +171,7 @@
     error = null;
     
     try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
-      if (!token) {
-        throw new Error('Not authenticated');
-      }
+      const token = await getValidAccessToken();
 
       const response = await fetch(`${API_URL}/api/v1/billing/portal`, {
         method: 'POST',
@@ -479,7 +440,6 @@
     color: white;
   }
 </style>
-
 
 
 

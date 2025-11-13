@@ -98,6 +98,7 @@ func (s *Server) Router() http.Handler {
 	v1.HandleFunc("/projects", s.handleProjects)
 	v1.HandleFunc("/projects/", s.handleProjectByID)
 	v1.HandleFunc("/exports", s.handleExports)
+	v1.HandleFunc("/billing/summary", s.handleBillingSummary)
 	v1.HandleFunc("/billing/checkout", s.handleCreateCheckoutSession)
 	v1.HandleFunc("/billing/portal", s.handleCreateBillingPortalSession)
 
