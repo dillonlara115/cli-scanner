@@ -43,29 +43,25 @@ Add these to your `.env` or Cloud Run environment:
 STRIPE_SECRET_KEY=sk_test_... # or sk_live_... for production
 STRIPE_WEBHOOK_SECRET=whsec_... # Get from Stripe Dashboard > Webhooks
 
-# Stripe Price IDs (create products/prices in Stripe Dashboard)
-STRIPE_PRICE_ID_PRO=price_xxxxx # Pro plan price ID ($29/month)
-STRIPE_PRICE_ID_TEAM_SEAT=price_xxxxx # Team seat add-on ($5/month)
+# Stripe Price IDs (configured in Stripe Dashboard)
+STRIPE_PRICE_ID_PRO=price_1SQX6II4GvFkgB3qgsZLKAgN # Pro plan monthly ($29/month)
+STRIPE_PRICE_ID_PRO_ANNUAL=price_1SQX6II4GvFkgB3q2L20DX9C # Pro plan annual
+STRIPE_PRICE_ID_TEAM_SEAT=price_1SQX9LI4GvFkgB3qAUWyEQee # Team seat add-on ($5/month)
 
 # Redirect URLs after checkout
 STRIPE_SUCCESS_URL=https://app.barracudaseo.com/settings?success=true
 STRIPE_CANCEL_URL=https://app.barracudaseo.com/settings?canceled=true
 ```
 
-### 3. Create Products in Stripe Dashboard
+### 3. Products Already Configured
 
-1. Go to [Stripe Dashboard > Products](https://dashboard.stripe.com/products)
-2. Create two products:
+The following products are already set up in Stripe:
 
-   **Product 1: Pro Plan**
-   - Name: "Barracuda Pro"
-   - Pricing: Recurring, $29/month
-   - Copy the Price ID (starts with `price_`)
+- **Barracuda Pro Monthly**: `price_1SQX6II4GvFkgB3qgsZLKAgN` ($29/month)
+- **Barracuda Pro Annual**: `price_1SQX6II4GvFkgB3q2L20DX9C` (annual billing)
+- **Barracuda Team Seat**: `price_1SQX9LI4GvFkgB3qAUWyEQee` ($5/month per seat)
 
-   **Product 2: Team Seat Add-on**
-   - Name: "Barracuda Team Seat"
-   - Pricing: Recurring, $5/month
-   - Copy the Price ID (starts with `price_`)
+These Price IDs are already configured in the Stripe sandbox for this organization.
 
 ### 4. Set Up Webhook Endpoint
 
@@ -125,6 +121,11 @@ Stripe-Signature: <signature>
 ## Frontend Integration
 
 See `web/src/components/Billing.svelte` for the subscription management UI component.
+
+The frontend requires these environment variables:
+- `VITE_STRIPE_PRICE_ID_PRO` - Monthly Pro plan price ID
+- `VITE_STRIPE_PRICE_ID_PRO_ANNUAL` - Annual Pro plan price ID
+- `VITE_STRIPE_PRICE_ID_TEAM_SEAT` - Team seat add-on price ID (optional, for future team features)
 
 ## Testing
 

@@ -19,12 +19,13 @@ import (
 
 // StripeConfig holds Stripe configuration
 type StripeConfig struct {
-	SecretKey       string
-	WebhookSecret   string
-	PriceIDPro      string
-	PriceIDTeamSeat string
-	SuccessURL      string
-	CancelURL       string
+	SecretKey         string
+	WebhookSecret     string
+	PriceIDPro        string // Monthly Pro plan
+	PriceIDProAnnual  string // Annual Pro plan
+	PriceIDTeamSeat   string
+	SuccessURL        string
+	CancelURL         string
 }
 
 // InitializeStripe initializes Stripe with API key
@@ -38,12 +39,13 @@ func InitializeStripe(secretKey string) {
 // GetStripeConfig loads Stripe configuration from environment
 func GetStripeConfig() StripeConfig {
 	return StripeConfig{
-		SecretKey:       os.Getenv("STRIPE_SECRET_KEY"),
-		WebhookSecret:   os.Getenv("STRIPE_WEBHOOK_SECRET"),
-		PriceIDPro:      os.Getenv("STRIPE_PRICE_ID_PRO"),      // e.g., price_xxxxx
-		PriceIDTeamSeat: os.Getenv("STRIPE_PRICE_ID_TEAM_SEAT"), // e.g., price_xxxxx
-		SuccessURL:      os.Getenv("STRIPE_SUCCESS_URL"),
-		CancelURL:       os.Getenv("STRIPE_CANCEL_URL"),
+		SecretKey:        os.Getenv("STRIPE_SECRET_KEY"),
+		WebhookSecret:    os.Getenv("STRIPE_WEBHOOK_SECRET"),
+		PriceIDPro:       os.Getenv("STRIPE_PRICE_ID_PRO"),        // Monthly Pro plan
+		PriceIDProAnnual: os.Getenv("STRIPE_PRICE_ID_PRO_ANNUAL"), // Annual Pro plan
+		PriceIDTeamSeat:  os.Getenv("STRIPE_PRICE_ID_TEAM_SEAT"),   // Team seat add-on
+		SuccessURL:       os.Getenv("STRIPE_SUCCESS_URL"),
+		CancelURL:        os.Getenv("STRIPE_CANCEL_URL"),
 	}
 }
 
@@ -95,6 +97,7 @@ func (s *Server) handleCreateCheckoutSession(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Get user profile to check for existing Stripe customer ID
+	// Create profile if it doesn't exist
 	var profiles []map[string]interface{}
 	data, _, err := s.serviceRole.From("profiles").
 		Select("stripe_customer_id", "", false).
@@ -107,18 +110,63 @@ func (s *Server) handleCreateCheckoutSession(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	
-	if err := json.Unmarshal(data, &profiles); err != nil || len(profiles) == 0 {
+	if err := json.Unmarshal(data, &profiles); err != nil {
 		s.logger.Error("Failed to parse user profile", zap.Error(err))
 		s.respondError(w, http.StatusInternalServerError, "Failed to get user profile")
 		return
 	}
 	
+	// If profile doesn't exist, create it
+	if len(profiles) == 0 {
+		// Get user email from Auth API
+		user, err := s.validateTokenViaAPI(r.Header.Get("Authorization")[7:]) // Remove "Bearer " prefix
+		if err != nil {
+			s.logger.Error("Failed to get user email for profile creation", zap.Error(err))
+			s.respondError(w, http.StatusInternalServerError, "Failed to get user email")
+			return
+		}
+		
+		// Create profile using service role (bypasses RLS)
+		_, _, err = s.serviceRole.From("profiles").
+			Insert(map[string]interface{}{
+				"id": userID,
+				"display_name": user.Email,
+			}, false, "", "", "").
+			Execute()
+		
+		if err != nil {
+			s.logger.Error("Failed to create user profile", zap.Error(err))
+			s.respondError(w, http.StatusInternalServerError, "Failed to create user profile")
+			return
+		}
+		
+		// Re-fetch the newly created profile
+		data, _, err = s.serviceRole.From("profiles").
+			Select("stripe_customer_id", "", false).
+			Eq("id", userID).
+			Execute()
+		
+		if err != nil {
+			s.logger.Error("Failed to fetch newly created profile", zap.Error(err))
+			s.respondError(w, http.StatusInternalServerError, "Failed to get user profile")
+			return
+		}
+		
+		if err := json.Unmarshal(data, &profiles); err != nil || len(profiles) == 0 {
+			s.logger.Error("Failed to parse newly created profile", zap.Error(err))
+			s.respondError(w, http.StatusInternalServerError, "Failed to get user profile")
+			return
+		}
+	}
+	
 	customerID := ""
-	if val, ok := profiles[0]["stripe_customer_id"].(string); ok {
-		customerID = val
+	if len(profiles) > 0 {
+		if val, ok := profiles[0]["stripe_customer_id"].(string); ok {
+			customerID = val
+		}
 	}
 
-	// Get user email from Auth API
+	// Get user email from Auth API (needed for creating Stripe customer if needed)
 	user, err := s.validateTokenViaAPI(r.Header.Get("Authorization")[7:]) // Remove "Bearer " prefix
 	if err != nil {
 		s.logger.Error("Failed to get user email", zap.Error(err))
@@ -208,7 +256,15 @@ func (s *Server) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verify webhook signature
-	event, err := webhook.ConstructEvent(payload, r.Header.Get("Stripe-Signature"), stripeConfig.WebhookSecret)
+	// Use ConstructEventWithOptions to handle API version mismatches from Stripe CLI
+	event, err := webhook.ConstructEventWithOptions(
+		payload,
+		r.Header.Get("Stripe-Signature"),
+		stripeConfig.WebhookSecret,
+		webhook.ConstructEventOptions{
+			IgnoreAPIVersionMismatch: true, // Allow newer API versions from Stripe CLI
+		},
+	)
 	if err != nil {
 		s.logger.Error("Webhook signature verification failed", zap.Error(err))
 		s.respondError(w, http.StatusBadRequest, "Webhook signature verification failed")
@@ -255,16 +311,33 @@ func (s *Server) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCheckoutSessionCompleted(session *stripe.CheckoutSession) {
 	userID := session.Metadata["user_id"]
 	if userID == "" {
-		s.logger.Error("Missing user_id in checkout session metadata")
+		s.logger.Error("Missing user_id in checkout session metadata", zap.String("session_id", session.ID))
+		return
+	}
+
+	// Check if subscription is available in the session
+	if session.Subscription == nil {
+		s.logger.Info("Checkout session completed but subscription not yet available - waiting for customer.subscription.created event",
+			zap.String("session_id", session.ID),
+			zap.String("user_id", userID))
+		// The subscription will be created via customer.subscription.created event
+		// Just update the profile with the subscription ID when it becomes available
 		return
 	}
 
 	// Retrieve the subscription
 	sub, err := subscription.Get(session.Subscription.ID, nil)
 	if err != nil {
-		s.logger.Error("Failed to retrieve subscription", zap.Error(err))
+		s.logger.Error("Failed to retrieve subscription",
+			zap.Error(err),
+			zap.String("subscription_id", session.Subscription.ID),
+			zap.String("session_id", session.ID))
 		return
 	}
+
+	s.logger.Info("Processing subscription from checkout session",
+		zap.String("subscription_id", sub.ID),
+		zap.String("user_id", userID))
 
 	s.handleSubscriptionUpdate(sub)
 }
@@ -286,7 +359,7 @@ func (s *Server) handleSubscriptionUpdate(sub *stripe.Subscription) {
 	stripeConfig := GetStripeConfig()
 	if len(sub.Items.Data) > 0 && sub.Items.Data[0].Price != nil {
 		priceID := sub.Items.Data[0].Price.ID
-		if priceID == stripeConfig.PriceIDPro {
+		if priceID == stripeConfig.PriceIDPro || priceID == stripeConfig.PriceIDProAnnual {
 			tier = "pro"
 		} else if priceID == stripeConfig.PriceIDTeamSeat {
 			tier = "team"
@@ -355,8 +428,28 @@ func (s *Server) handleSubscriptionUpdate(sub *stripe.Subscription) {
 		return
 	}
 
+	// Update profile with subscription info
+	profileUpdate := map[string]interface{}{
+		"stripe_subscription_id":      sub.ID,
+		"subscription_tier":            tier,
+		"subscription_status":          string(sub.Status),
+		"subscription_current_period_end": time.Unix(sub.CurrentPeriodEnd, 0).Format(time.RFC3339),
+		"subscription_cancel_at_period_end": sub.CancelAtPeriodEnd,
+	}
+
+	_, _, err = s.serviceRole.From("profiles").
+		Update(profileUpdate, "", "").
+		Eq("id", userID).
+		Execute()
+
+	if err != nil {
+		s.logger.Error("Failed to update profile with subscription info", zap.Error(err))
+		// Don't return - subscription was created successfully
+	}
+
 	s.logger.Info("Subscription updated", 
 		zap.String("user_id", userID),
+		zap.String("subscription_id", sub.ID),
 		zap.String("tier", tier),
 		zap.String("status", string(sub.Status)),
 	)

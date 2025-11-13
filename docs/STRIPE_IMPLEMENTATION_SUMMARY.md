@@ -31,12 +31,8 @@
 
 ## ⏳ Next Steps (Required)
 
-### 1. Install Stripe Go SDK
-```bash
-cd /home/dillon/Sites/cli-scanner
-go get github.com/stripe/stripe-go/v78
-go mod tidy
-```
+### 1. Stripe Go SDK ✅ Already Installed
+The Stripe SDK is already installed (`github.com/stripe/stripe-go/v78` in `go.mod`).
 
 ### 2. Run Database Migration
 ```bash
@@ -52,16 +48,11 @@ psql $DATABASE_URL < supabase/migrations/20250104_add_subscriptions.sql
    - Go to https://dashboard.stripe.com/register
    - Complete account setup
 
-2. **Create Products & Prices**
-   - Go to Stripe Dashboard > Products
-   - Create "Barracuda Pro" product:
-     - Name: Barracuda Pro
-     - Pricing: Recurring, $29/month
-     - Copy the Price ID (starts with `price_`)
-   - Create "Barracuda Team Seat" product:
-     - Name: Barracuda Team Seat  
-     - Pricing: Recurring, $5/month
-     - Copy the Price ID
+2. **Products Already Configured ✅**
+   The following products are already set up in Stripe sandbox:
+   - **Barracuda Pro Monthly**: `price_1SQX6II4GvFkgB3qgsZLKAgN` ($29/month)
+   - **Barracuda Pro Annual**: `price_1SQX6II4GvFkgB3q2L20DX9C` (annual billing)
+   - **Barracuda Team Seat**: `price_1SQX9LI4GvFkgB3qAUWyEQee` ($5/month)
 
 3. **Set Up Webhook**
    - Go to Stripe Dashboard > Webhooks
@@ -79,8 +70,9 @@ psql $DATABASE_URL < supabase/migrations/20250104_add_subscriptions.sql
 ```bash
 STRIPE_SECRET_KEY=sk_test_... # or sk_live_... for production
 STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_PRICE_ID_PRO=price_xxxxx
-STRIPE_PRICE_ID_TEAM_SEAT=price_xxxxx
+STRIPE_PRICE_ID_PRO=price_1SQX6II4GvFkgB3qgsZLKAgN # Monthly Pro plan
+STRIPE_PRICE_ID_PRO_ANNUAL=price_1SQX6II4GvFkgB3q2L20DX9C # Annual Pro plan
+STRIPE_PRICE_ID_TEAM_SEAT=price_1SQX9LI4GvFkgB3qAUWyEQee # Team seat add-on
 STRIPE_SUCCESS_URL=https://app.barracudaseo.com/billing?success=true
 STRIPE_CANCEL_URL=https://app.barracudaseo.com/billing?canceled=true
 ```
@@ -88,7 +80,9 @@ STRIPE_CANCEL_URL=https://app.barracudaseo.com/billing?canceled=true
 **Frontend (.env or Vercel):**
 ```bash
 VITE_API_URL=https://your-api-domain.com
-VITE_STRIPE_PRICE_ID_PRO=price_xxxxx
+VITE_STRIPE_PRICE_ID_PRO=price_1SQX6II4GvFkgB3qgsZLKAgN
+VITE_STRIPE_PRICE_ID_PRO_ANNUAL=price_1SQX6II4GvFkgB3q2L20DX9C
+VITE_STRIPE_PRICE_ID_TEAM_SEAT=price_1SQX9LI4GvFkgB3qAUWyEQee
 ```
 
 ### 5. Test the Integration

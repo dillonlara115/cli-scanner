@@ -13,6 +13,10 @@
   
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
   const STRIPE_PRICE_ID_PRO = import.meta.env.VITE_STRIPE_PRICE_ID_PRO || '';
+  const STRIPE_PRICE_ID_PRO_ANNUAL = import.meta.env.VITE_STRIPE_PRICE_ID_PRO_ANNUAL || '';
+  const STRIPE_PRICE_ID_TEAM_SEAT = import.meta.env.VITE_STRIPE_PRICE_ID_TEAM_SEAT || '';
+  
+  let selectedBillingPeriod = 'monthly'; // 'monthly' or 'annual'
 
   onMount(async () => {
     await loadSubscriptionData();
@@ -25,32 +29,115 @@
     error = null;
     
     try {
+      // Ensure we have a valid session before querying (RLS requires auth.uid())
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) {
+        console.warn('No active session, refreshing...');
+        const { error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError) {
+          throw new Error('Session expired. Please sign in again.');
+        }
+      }
+      
       // Load profile with subscription info
-      const { data: profileData, error: profileError } = await supabase
+      // Note: Profile will be created automatically by the backend API if it doesn't exist
+      // Use limit(1) so zero-row responses stay as arrays and avoid PGRST116 errors
+      const { data: profileRows, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', $user.id)
-        .single();
+        .limit(1); // Avoid single-row coercion errors when no profile exists
       
-      if (profileError) throw profileError;
-      profile = profileData;
+      let profileData = profileRows?.[0] || null;
+      
+      // Handle profile error - PGRST116 means "no rows" which is OK
+      if (profileError) {
+        const profileErrCode = profileError.code;
+        const profileErrMessage = profileError.message || JSON.stringify(profileError);
+        const isProfilePGRST116 = profileErrCode === 'PGRST116' || 
+                                  profileErrMessage?.includes('PGRST116') || 
+                                  profileErrMessage?.includes('contains 0 rows');
+        
+        if (isProfilePGRST116) {
+          // No profile found - use defaults (this is OK)
+          profileData = null;
+        } else {
+          // Real error - throw it
+          throw profileError;
+        }
+      }
+      
+      // If profile doesn't exist, use defaults (backend will create it when needed)
+      profile = profileData || {
+        id: $user.id,
+        subscription_tier: 'free',
+        subscription_status: 'active',
+        team_size: 1
+      };
 
-      // Load active subscription if exists
-      if (profile.stripe_subscription_id) {
-        const { data: subData, error: subError } = await supabase
+      // Load subscription - try multiple approaches
+      // First, try by user_id (most reliable since RLS policy checks user_id)
+      if (profile.id) {
+        // Query by user_id first - this matches the RLS policy
+        const { data: userSubRows, error: userSubError } = await supabase
+          .from('subscriptions')
+          .select('*')
+          .eq('user_id', profile.id)
+          .limit(1);
+        
+        const userSubData = userSubRows?.[0] || null;
+        
+        if (userSubError) {
+          if (userSubError.code === 'PGRST116') {
+            // No subscription found - this is OK
+            console.log('No subscription found for user_id:', profile.id);
+          } else {
+            console.warn('Subscription fetch by user_id error:', userSubError);
+          }
+        } else if (userSubData) {
+          subscription = userSubData;
+          // Update profile with subscription ID if it's missing
+          if (!profile.stripe_subscription_id && userSubData.stripe_subscription_id) {
+            profile.stripe_subscription_id = userSubData.stripe_subscription_id;
+          }
+        }
+      }
+      
+      // Fallback: try by stripe_subscription_id if we have it and didn't find by user_id
+      if (!subscription && profile.stripe_subscription_id) {
+        const { data: subRows, error: subError } = await supabase
           .from('subscriptions')
           .select('*')
           .eq('stripe_subscription_id', profile.stripe_subscription_id)
-          .eq('status', 'active')
-          .single();
+          .limit(1);
         
-        if (!subError && subData) {
+        const subData = subRows?.[0] || null;
+        
+        if (subError) {
+          if (subError.code !== 'PGRST116') {
+            console.warn('Subscription fetch by stripe_subscription_id error:', subError);
+          }
+        } else if (subData) {
           subscription = subData;
         }
       }
     } catch (err) {
-      error = err.message;
-      console.error('Failed to load subscription data:', err);
+      // Only show error if it's not a "no rows" error (PGRST116)
+      // Check multiple possible error structures from Supabase
+      const errMessage = err.message || err.error?.message || JSON.stringify(err);
+      const errCode = err.code || err.error?.code;
+      const isPGRST116 = errCode === 'PGRST116' || errMessage?.includes('PGRST116') || errMessage?.includes('contains 0 rows');
+      
+      if (!isPGRST116) {
+        // Real error - show it
+        error = errMessage;
+        console.error('Failed to load subscription data:', err);
+      } else {
+        // PGRST116 is expected when no subscription exists yet - not an error
+        // Clear any previous error and just log
+        error = null;
+        console.log('No subscription data found yet (this is OK - webhook may still be processing)');
+      }
     } finally {
       loading = false;
     }
@@ -63,6 +150,22 @@
     error = null;
     
     try {
+      // Refresh session to ensure we have a valid token
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) {
+        throw new Error('Not authenticated. Please sign in again.');
+      }
+      
+      // Check if token is expired or about to expire (within 60 seconds)
+      const expiresAt = sessionData.session.expires_at;
+      if (expiresAt && expiresAt * 1000 < Date.now() + 60000) {
+        // Refresh the session
+        const { error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError) {
+          throw new Error('Session expired. Please sign in again.');
+        }
+      }
+      
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) {
         throw new Error('Not authenticated');
@@ -305,8 +408,32 @@
               Unlock more features with a Pro subscription.
             </p>
             
+            <!-- Billing Period Toggle -->
+            <div class="flex justify-center mb-6">
+              <div class="btn-group">
+                <button 
+                  class="btn btn-sm {selectedBillingPeriod === 'monthly' ? 'btn-primary' : 'btn-outline'}"
+                  on:click={() => selectedBillingPeriod = 'monthly'}
+                >
+                  Monthly
+                </button>
+                <button 
+                  class="btn btn-sm {selectedBillingPeriod === 'annual' ? 'btn-primary' : 'btn-outline'}"
+                  on:click={() => selectedBillingPeriod = 'annual'}
+                >
+                  Annual
+                  <span class="badge badge-success badge-sm ml-2">Save 20%</span>
+                </button>
+              </div>
+            </div>
+            
             <div class="bg-primary/10 rounded-lg p-4 mb-4">
-              <h3 class="font-semibold mb-2">Pro Plan - $29/month</h3>
+              {#if selectedBillingPeriod === 'monthly'}
+                <h3 class="font-semibold mb-2">Pro Plan - $29/month</h3>
+              {:else}
+                <h3 class="font-semibold mb-2">Pro Plan - Annual</h3>
+                <p class="text-sm text-base-content/70 mb-2">Billed annually, save 20%</p>
+              {/if}
               <ul class="text-sm space-y-1 mb-4">
                 <li>✓ Crawl up to 10,000 pages</li>
                 <li>✓ Team collaboration (1 user included, +$5/user)</li>
@@ -318,20 +445,25 @@
 
             <button 
               class="btn btn-primary w-full"
-              on:click={() => createCheckoutSession(STRIPE_PRICE_ID_PRO)}
-              disabled={creatingCheckout || !STRIPE_PRICE_ID_PRO}
+              on:click={() => {
+                const priceId = selectedBillingPeriod === 'monthly' 
+                  ? STRIPE_PRICE_ID_PRO 
+                  : STRIPE_PRICE_ID_PRO_ANNUAL;
+                createCheckoutSession(priceId);
+              }}
+              disabled={creatingCheckout || (!STRIPE_PRICE_ID_PRO && !STRIPE_PRICE_ID_PRO_ANNUAL)}
             >
               {#if creatingCheckout}
                 <Loader class="w-4 h-4 animate-spin" />
                 Processing...
               {:else}
-                Upgrade to Pro
+                Upgrade to Pro {selectedBillingPeriod === 'annual' ? '(Annual)' : ''}
               {/if}
             </button>
 
-            {#if !STRIPE_PRICE_ID_PRO}
+            {#if !STRIPE_PRICE_ID_PRO && !STRIPE_PRICE_ID_PRO_ANNUAL}
               <p class="text-sm text-warning mt-2">
-                Stripe is not configured. Please set VITE_STRIPE_PRICE_ID_PRO environment variable.
+                Stripe is not configured. Please set VITE_STRIPE_PRICE_ID_PRO and VITE_STRIPE_PRICE_ID_PRO_ANNUAL environment variables.
               </p>
             {/if}
           </div>
@@ -347,8 +479,6 @@
     color: white;
   }
 </style>
-
-
 
 
 

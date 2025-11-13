@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -154,7 +155,8 @@ func (s *Server) validateToken(token string) (*User, error) {
 // validateTokenViaAPI validates token by making a request to Supabase Auth API
 func (s *Server) validateTokenViaAPI(token string) (*User, error) {
 	// Make request to Supabase Auth API to get user
-	req, err := http.NewRequest("GET", s.config.SupabaseURL+"/auth/v1/user", nil)
+	authURL := s.config.SupabaseURL + "/auth/v1/user"
+	req, err := http.NewRequest("GET", authURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -165,12 +167,21 @@ func (s *Server) validateTokenViaAPI(token string) (*User, error) {
 	client := &http.Client{Timeout: 10 * 1000000000} // 10 seconds
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		s.logger.Debug("Token validation request failed", 
+			zap.String("url", authURL),
+			zap.Error(err))
+		return nil, fmt.Errorf("token validation request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("token validation failed: status %d", resp.StatusCode)
+		// Read response body for error details
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		s.logger.Debug("Token validation failed", 
+			zap.String("url", authURL),
+			zap.Int("status", resp.StatusCode),
+			zap.String("response", string(bodyBytes)))
+		return nil, fmt.Errorf("token validation failed: status %d, response: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var user User

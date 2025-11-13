@@ -87,6 +87,12 @@ func runAPI(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Log configuration (without sensitive data)
+	logger.Info("Initializing API server",
+		zap.String("supabase_url", supabaseURL),
+		zap.Bool("has_service_key", supabaseServiceKey != ""),
+		zap.Bool("has_anon_key", supabaseAnonKey != ""))
+
 	// Initialize API server
 	server, err := api.NewServer(api.Config{
 		SupabaseURL:        supabaseURL,
