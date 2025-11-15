@@ -181,11 +181,11 @@
               <td class="max-w-xs truncate">{result.title || '-'}</td>
               <td>
                 {#if issueCount > 0}
-                  <span class="badge badge-error">
+                  <span class="badge badge-error whitespace-nowrap">
                     {issueCount} issue{issueCount !== 1 ? 's' : ''}
                   </span>
                 {:else}
-                  <span class="badge badge-success">No issues</span>
+                  <span class="text-base-content/70">No issues</span>
                 {/if}
               </td>
               <td onclick={(e) => e.stopPropagation()}>

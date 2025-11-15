@@ -211,15 +211,15 @@
       <div class="space-y-2">
         <div class="flex justify-between">
           <span>Internal Links:</span>
-          <span class="font-bold">{summary.total_internal_links}</span>
+          <span class="font-bold">{formatNumber(summary.total_internal_links)}</span>
         </div>
         <div class="flex justify-between">
           <span>External Links:</span>
-          <span class="font-bold">{summary.total_external_links}</span>
+          <span class="font-bold">{formatNumber(summary.total_external_links)}</span>
         </div>
         <div class="flex justify-between">
           <span>Pages with Redirects:</span>
-          <span class="font-bold">{summary.pages_with_redirects}</span>
+          <span class="font-bold">{formatNumber(summary.pages_with_redirects)}</span>
         </div>
       </div>
     </div>

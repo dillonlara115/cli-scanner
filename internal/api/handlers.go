@@ -19,6 +19,13 @@ import (
 	"go.uber.org/zap"
 )
 
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // handleHealth returns server health status
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -1228,33 +1235,91 @@ func (s *Server) handleGetCrawl(w http.ResponseWriter, r *http.Request, crawlID 
 
 // handleCrawlGraph handles GET /api/v1/crawls/:id/graph - returns link graph data
 func (s *Server) handleCrawlGraph(w http.ResponseWriter, r *http.Request, crawlID string) {
-	// Fetch all pages for this crawl
+	s.logger.Info("Fetching link graph", zap.String("crawl_id", crawlID))
+	
+	// Fetch all pages for this crawl using service role to ensure access
+	// Select all fields to ensure we get the data field properly
 	var pages []map[string]interface{}
-	data, _, err := s.supabase.From("pages").Select("url,data", "", false).Eq("crawl_id", crawlID).Execute()
+	data, _, err := s.serviceRole.From("pages").Select("*", "", false).Eq("crawl_id", crawlID).Execute()
 	if err != nil {
-		s.logger.Error("Failed to fetch pages for graph", zap.Error(err))
+		s.logger.Error("Failed to fetch pages for graph", zap.String("crawl_id", crawlID), zap.Error(err))
 		s.respondError(w, http.StatusInternalServerError, "Failed to fetch pages")
 		return
 	}
 
 	if err := json.Unmarshal(data, &pages); err != nil {
-		s.logger.Error("Failed to parse pages data", zap.Error(err))
+		s.logger.Error("Failed to parse pages data", zap.String("crawl_id", crawlID), zap.Error(err), zap.String("raw_data_preview", string(data[:min(200, len(data))])))
 		s.respondError(w, http.StatusInternalServerError, "Failed to parse pages")
 		return
 	}
 
+	s.logger.Info("Fetched pages for graph", zap.String("crawl_id", crawlID), zap.Int("page_count", len(pages)))
+	
+	// Log raw data structure for first page if available
+	if len(pages) > 0 {
+		firstPageRaw, _ := json.Marshal(pages[0])
+		s.logger.Info("First page raw data", zap.String("crawl_id", crawlID), zap.String("first_page_json", string(firstPageRaw)))
+	}
+
 	// Build graph structure: map[sourceURL][]targetURL
 	graph := make(map[string][]string)
+	pagesWithLinks := 0
+	totalLinks := 0
 
-	for _, page := range pages {
+	for i, page := range pages {
 		url, ok := page["url"].(string)
 		if !ok {
 			continue
 		}
 
-		dataField, ok := page["data"].(map[string]interface{})
-		if !ok {
+		// Log first page's data structure for debugging
+		if i == 0 {
+			s.logger.Info("Sample page data structure", 
+				zap.String("url", url),
+				zap.Any("data_type", fmt.Sprintf("%T", page["data"])),
+				zap.Any("data_value", page["data"]))
+		}
+
+		// Handle data field - it might be a map or a JSON string
+		var dataField map[string]interface{}
+		switch v := page["data"].(type) {
+		case map[string]interface{}:
+			dataField = v
+		case string:
+			// Try to unmarshal if it's a JSON string
+			if err := json.Unmarshal([]byte(v), &dataField); err != nil {
+				s.logger.Debug("Failed to parse data field as JSON string", zap.String("url", url), zap.Error(err))
+				continue
+			}
+		case nil:
+			// Data field is nil, skip this page
+			s.logger.Debug("Page has nil data field", zap.String("url", url))
 			continue
+		default:
+			// Try to marshal and unmarshal to handle other types
+			jsonBytes, err := json.Marshal(v)
+			if err != nil {
+				s.logger.Debug("Failed to marshal data field", zap.String("url", url), zap.Error(err))
+				continue
+			}
+			if err := json.Unmarshal(jsonBytes, &dataField); err != nil {
+				s.logger.Debug("Failed to parse data field", zap.String("url", url), zap.Error(err))
+				continue
+			}
+		}
+
+		if dataField == nil {
+			s.logger.Debug("Data field is nil after parsing", zap.String("url", url))
+			continue
+		}
+
+		// Log first page's parsed data structure
+		if i == 0 {
+			s.logger.Info("Sample parsed data field", 
+				zap.String("url", url),
+				zap.Any("data_field_keys", getMapKeys(dataField)),
+				zap.Any("internal_links", dataField["internal_links"]),
+				zap.Any("external_links", dataField["external_links"]))
 		}
 
 		// Extract internal and external links
@@ -1277,16 +1342,49 @@ func (s *Server) handleCrawlGraph(w http.ResponseWriter, r *http.Request, crawlI
 		}
 
 		if len(allLinks) > 0 {
-			// Convert to []string
-			links := make([]string, len(allLinks))
-			for i, link := range allLinks {
-				links[i] = link
-			}
-			graph[url] = links
+			graph[url] = allLinks
+			pagesWithLinks++
+			totalLinks += len(allLinks)
+		} else if i < 3 {
+			// Log first few pages with no links for debugging
+			s.logger.Debug("Page has no links", 
+				zap.String("url", url),
+				zap.Any("has_internal_links", dataField["internal_links"] != nil),
+				zap.Any("has_external_links", dataField["external_links"] != nil))
 		}
 	}
 
+	s.logger.Info("Built link graph", 
+		zap.String("crawl_id", crawlID), 
+		zap.Int("pages_with_links", pagesWithLinks),
+		zap.Int("total_links", totalLinks),
+		zap.Int("graph_size", len(graph)),
+		zap.Int("total_pages_processed", len(pages)))
+
+	// If we have pages but no links, log a warning
+	if len(pages) > 0 && len(graph) == 0 {
+		firstPageURL := "unknown"
+		if len(pages) > 0 {
+			if url, ok := pages[0]["url"].(string); ok {
+				firstPageURL = url
+			}
+		}
+		s.logger.Warn("No links found in pages", 
+			zap.String("crawl_id", crawlID),
+			zap.Int("total_pages", len(pages)),
+			zap.String("first_page_url", firstPageURL))
+	}
+
 	s.respondJSON(w, http.StatusOK, graph)
+}
+
+// getMapKeys returns the keys of a map for logging purposes
+func getMapKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // verifyCrawlAccess checks if user has access to a crawl (via project membership)

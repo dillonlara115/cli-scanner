@@ -95,6 +95,26 @@
       results = pagesResult.data || [];
       const issues = issuesResult.data || [];
 
+      // Calculate link statistics from pages
+      let totalInternalLinks = 0;
+      let totalExternalLinks = 0;
+      let pagesWithRedirects = 0;
+      
+      results.forEach(page => {
+        // Count internal links
+        if (Array.isArray(page.internal_links)) {
+          totalInternalLinks += page.internal_links.length;
+        }
+        // Count external links
+        if (Array.isArray(page.external_links)) {
+          totalExternalLinks += page.external_links.length;
+        }
+        // Count pages with redirects
+        if (Array.isArray(page.redirect_chain) && page.redirect_chain.length > 0) {
+          pagesWithRedirects++;
+        }
+      });
+
       // Generate summary from data
       summary = {
         total_pages: results.length,
@@ -111,7 +131,10 @@
         average_response_time_ms: results.length > 0
           ? Math.round(results.reduce((sum, p) => sum + (p.response_time_ms || 0), 0) / results.length)
           : 0,
-        pages_with_errors: results.filter(p => p.status_code >= 400).length
+        pages_with_errors: results.filter(p => p.status_code >= 400).length,
+        total_internal_links: totalInternalLinks,
+        total_external_links: totalExternalLinks,
+        pages_with_redirects: pagesWithRedirects
       };
 
       // Count issues by type

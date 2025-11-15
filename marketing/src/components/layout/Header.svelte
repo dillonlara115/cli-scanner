@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import Logo from '../Logo.svelte';
 </script>
 
 <header class="bg-[#3c3836] border-b border-white/10 sticky top-0 z-50 backdrop-blur-sm bg-[#3c3836]/80">
 	<div class="container mx-auto px-4">
 		<nav class="flex items-center justify-between h-16">
 			<div class="flex-1">
-				<a href="/" class="text-xl font-heading font-bold text-[#8ec07c] hover:text-[#a0d28c] transition-colors">
-					Barracuda SEO
+				<a href="/" class="hover:opacity-80 transition-opacity">
+					<Logo size="md" />
 				</a>
 			</div>
 			<div class="flex-none">

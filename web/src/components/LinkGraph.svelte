@@ -18,18 +18,29 @@
     await loadGraph();
   });
 
+  // Reload graph when crawlId changes
+  $: if (crawlId) {
+    loadGraph();
+  }
+
   async function loadGraph() {
-    if (!crawlId) return;
+    if (!crawlId) {
+      error = 'No crawl ID provided';
+      loading = false;
+      return;
+    }
 
     loading = true;
     error = null;
 
     try {
       const { data, error: fetchError } = await fetchCrawlGraph(crawlId);
+      console.log('Link graph API response:', { data, fetchError, crawlId });
       if (fetchError) {
         throw fetchError;
       }
       graphData = data || {};
+      console.log('Graph data set:', graphData, 'Total nodes:', Object.keys(graphData || {}).length);
     } catch (err) {
       console.error('Error loading link graph:', err);
       error = err.message || 'Failed to load link graph';

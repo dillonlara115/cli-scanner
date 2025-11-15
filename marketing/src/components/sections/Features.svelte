@@ -56,7 +56,8 @@
 					Invite teammates with role-based permissions. Perfect for agencies and teams who need shared project access and seamless collaboration.
 				</p>
 			</div>
-			<div class="bg-[#2d2826] rounded-lg shadow-xl p-6 border border-white/10">
+			<div class="bg-[#2d2826] rounded-lg shadow-xl p-6 border border-[#8ec07c]/30 relative">
+				<div class="absolute -top-2 -right-2 bg-[#8ec07c] text-[#3c3836] px-2 py-1 rounded text-xs font-bold">Pro</div>
 				<div class="flex items-center gap-3 mb-3">
 					<div class="p-2 bg-[#8ec07c]/10 rounded-lg">
 						<Plug class="w-5 h-5 text-[#8ec07c]" />
@@ -64,7 +65,7 @@
 					<h3 class="text-xl font-heading font-bold text-[#8ec07c]">Integrate</h3>
 				</div>
 				<p class="text-white/70">
-					Connect Google Search Console, Analytics, and Clarity to enrich your audit data and track performance over time. <span class="text-white/50 text-sm">(Pro)</span>
+					Connect Google Search Console, Analytics, and Microsoft Clarity to enrich your audit data and track performance over time.
 				</p>
 			</div>
 		</div>

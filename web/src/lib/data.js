@@ -133,7 +133,18 @@ export async function fetchPages(crawlId) {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return { data, error: null };
+    
+    // Flatten the data field - merge data.* fields into the top-level page object
+    const flattenedData = (data || []).map(page => {
+      const flattened = { ...page };
+      if (page.data && typeof page.data === 'object') {
+        // Merge data fields into top level
+        Object.assign(flattened, page.data);
+      }
+      return flattened;
+    });
+    
+    return { data: flattenedData, error: null };
   } catch (error) {
     return { data: null, error };
   }

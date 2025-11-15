@@ -43,7 +43,7 @@
 			</div>
 			<!-- Pro Tier -->
 			<div class="bg-[#8ec07c] rounded-lg shadow-xl p-8 border-2 border-[#8ec07c] relative">
-				<div class="absolute top-4 right-4 bg-white text-[#8ec07c] px-3 py-1 rounded-full text-xs font-bold">Popular</div>
+				<div class="absolute top-4 right-4 bg-white text-[#3c3836] px-3 py-1 rounded-full text-xs font-bold">Popular</div>
 				<h3 class="text-2xl font-heading font-bold mb-2 text-[#3c3836]">Pro</h3>
 				<div class="mb-2">
 					<div class="text-4xl font-bold text-[#3c3836]">
@@ -78,7 +78,7 @@
 						<span>CLI automation and priority support</span>
 					</li>
 				</ul>
-				<a href="https://app.barracudaseo.com" class="block w-full text-center bg-white text-[#8ec07c] hover:bg-white/90 px-6 py-3 rounded-lg font-medium transition-colors" target="_blank" rel="noopener noreferrer">
+				<a href="https://app.barracudaseo.com" class="block w-full text-center bg-white text-[#3c3836] hover:bg-white/90 px-6 py-3 rounded-lg font-medium transition-colors" target="_blank" rel="noopener noreferrer">
 					Start Free Trial
 				</a>
 				<p class="text-center text-sm text-[#3c3836]/80 mt-4">Perfect for agencies and teams</p>
